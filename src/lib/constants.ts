@@ -1,4 +1,4 @@
-export const TAX_RATE = 0.05; // 5% tax
+export const TAX_RATE = 0; // 5% tax
 
 export const ORDER_STATUS = {
   PENDING: 'pending',
