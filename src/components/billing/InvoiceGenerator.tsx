@@ -95,7 +95,6 @@ export async function generateInvoicePDF(data: InvoiceData) {
     headStyles: {
       fontStyle: 'bold',
       textColor: [0, 0, 0],
-      borderBottom: { width: 0.1, color: [0, 0, 0] },
     },
     columnStyles: {
       0: { cellWidth: 'auto' },

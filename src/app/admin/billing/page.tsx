@@ -135,7 +135,7 @@ export default function BillingPage() {
       let displayOrderId = generateOrderNumber(order.id);
 
       if (siblingOrders && siblingOrders.length > 1) {
-        allItems = siblingOrders.flatMap(o => o.order_items.map(oi => ({
+        allItems = (siblingOrders as unknown as OrderWithItems[]).flatMap(o => o.order_items.map(oi => ({
           name: `${oi.menu_item?.name} (Ord ${generateOrderNumber(o.id).slice(1)})`,
           quantity: oi.quantity,
           unit_price: oi.unit_price,
