@@ -16,7 +16,7 @@ import Link from 'next/link';
 
 interface TableWithStatus extends RestaurantTable {
   active_orders_count: number;
-  status: 'empty' | 'pending' | 'preparing';
+  status: 'empty' | 'pending' | 'preparing' | 'served';
 }
 
 export default function TablesPage() {
@@ -73,17 +73,18 @@ export default function TablesPage() {
     const { data: ordersData } = await supabase
       .from('orders')
       .select('id, table_id, status')
-      .in('status', ['pending', 'preparing']);
+      .in('status', ['pending', 'preparing', 'served']);
 
     const tableWithStatus = (tablesData as RestaurantTable[]).map(t => {
       const orders = ordersData?.filter(o => o.table_id === t.id) || [];
       const hasPreparing = orders.some(o => o.status === 'preparing');
       const hasPending = orders.some(o => o.status === 'pending');
+      const hasServed = orders.some(o => o.status === 'served');
       
       return {
         ...t,
         active_orders_count: orders.length,
-        status: hasPreparing ? 'preparing' : hasPending ? 'pending' : 'empty'
+        status: hasPreparing ? 'preparing' : hasPending ? 'pending' : hasServed ? 'served' : 'empty'
       } as TableWithStatus;
     });
 
@@ -200,7 +201,8 @@ export default function TablesPage() {
               'relative flex flex-col items-center p-5 space-y-4 animate-slide-up transition-all duration-300',
               !table.is_active && 'opacity-40 grayscale',
               table.status === 'pending' && 'ring-2 ring-amber-500/50 bg-amber-500/5',
-              table.status === 'preparing' && 'ring-2 ring-blue-500/50 bg-blue-500/5'
+              table.status === 'preparing' && 'ring-2 ring-blue-500/50 bg-blue-500/5',
+              table.status === 'served' && 'ring-2 ring-emerald-500/50 bg-emerald-500/5'
             )}
           >
             {/* Table Number Circle */}
@@ -208,7 +210,8 @@ export default function TablesPage() {
               'w-16 h-16 rounded-full flex flex-col items-center justify-center border-2 transition-colors',
               table.status === 'empty' ? 'border-border text-text-muted' : 
               table.status === 'pending' ? 'border-amber-500 text-amber-500 bg-amber-500/10' :
-              'border-blue-500 text-blue-500 bg-blue-500/10'
+              table.status === 'preparing' ? 'border-blue-500 text-blue-500 bg-blue-500/10' :
+              'border-emerald-500 text-emerald-500 bg-emerald-500/10'
             )}>
               <span className="text-xs font-medium uppercase opacity-60">Table</span>
               <span className="text-2xl font-bold leading-none">{table.table_number}</span>
@@ -217,7 +220,8 @@ export default function TablesPage() {
             <div className="text-center space-y-1">
               <p className="text-xs font-semibold text-text-primary">
                 {table.status === 'empty' ? 'Vacant' : 
-                 table.status === 'pending' ? 'Pending Order' : 'Preparing'}
+                 table.status === 'pending' ? 'Pending Order' : 
+                 table.status === 'preparing' ? 'Preparing' : 'Served'}
               </p>
               {table.active_orders_count > 0 && (
                 <p className="text-[10px] text-text-muted">{table.active_orders_count} active orders</p>

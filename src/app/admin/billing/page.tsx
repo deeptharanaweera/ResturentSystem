@@ -9,8 +9,9 @@ import { generateInvoicePDF } from '@/components/billing/InvoiceGenerator';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
-import { Receipt, FileDown, CreditCard, Loader2 } from 'lucide-react';
+import { Receipt, FileDown, CreditCard, Loader2, Trash2, CheckCircle, AlertCircle, Printer, X } from 'lucide-react';
 import { toast } from 'sonner';
+import Modal from '@/components/ui/Modal';
 
 export default function BillingPage() {
   const supabase = createClient();
@@ -18,6 +19,8 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [checkoutModal, setCheckoutModal] = useState<{ orders: OrderWithItems[] } | null>(null);
+  const [checkoutStep, setCheckoutStep] = useState<1 | 2>(1);
 
   useEffect(() => {
     fetchOrders();
@@ -33,7 +36,7 @@ export default function BillingPage() {
           order_items(*, menu_item:menu_items(*)),
           invoice:invoices!fk_orders_invoice(*)
         `)
-        .in('status', ['pending', 'preparing', 'served', 'completed'])
+        .in('status', ['pending', 'preparing', 'served'])
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -50,20 +53,40 @@ export default function BillingPage() {
     }
   }
 
-  async function handleCheckout(order: OrderWithItems) {
-    setProcessingId(order.id);
+  async function handleCancelOrder(orderId: string) {
+    if (!confirm('Are you sure you want to cancel this order?')) return;
+    
+    setProcessingId(orderId);
     try {
-      const subtotal = order.order_items.reduce(
-        (sum, oi) => sum + oi.unit_price * oi.quantity, 0
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: 'cancelled' })
+        .eq('id', orderId);
+      
+      if (error) throw error;
+      toast.success('Order cancelled successfully');
+      fetchOrders();
+    } catch (err) {
+      toast.error('Failed to cancel order');
+      console.error(err);
+    }
+    setProcessingId(null);
+  }
+
+  async function handleCheckout(ordersToCheckout: OrderWithItems[]) {
+    setProcessingId('processing');
+    try {
+      const totalSubtotal = ordersToCheckout.reduce((sum, order) => 
+        sum + order.order_items.reduce((s, oi) => s + oi.unit_price * oi.quantity, 0), 0
       );
-      const taxAmount = subtotal * TAX_RATE;
-      const grandTotal = subtotal + taxAmount;
+      const taxAmount = totalSubtotal * TAX_RATE;
+      const grandTotal = totalSubtotal + taxAmount;
 
       // Create invoice
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
         .insert({
-          subtotal,
+          subtotal: totalSubtotal,
           tax_amount: taxAmount,
           grand_total: grandTotal,
         })
@@ -72,38 +95,54 @@ export default function BillingPage() {
 
       if (invoiceError) throw invoiceError;
 
-      // Update order with invoice reference
+      // Update all orders
       if (invoice) {
-        await supabase
-          .from('orders')
-          .update({
-            status: 'completed',
-            payment_status: 'paid',
-            total_amount: grandTotal,
-            invoice_id: invoice.id,
-          })
-          .eq('id', order.id);
-      }
+        for (const order of ordersToCheckout) {
+          const sub = order.order_items.reduce((s, oi) => s + oi.unit_price * oi.quantity, 0);
+          const tax = sub * TAX_RATE;
+          const total = sub + tax;
 
-      // Generate PDF
-      if (invoice) {
-        await generateInvoicePDF({
-          invoiceNumber: invoice.invoice_number,
-          orderId: order.id,
-          tableNumber: order.restaurant_table?.table_number || 0,
-          items: order.order_items.map((oi) => ({
-            name: oi.menu_item?.name || 'Unknown',
+          await supabase
+            .from('orders')
+            .update({
+              status: 'completed',
+              payment_status: 'paid',
+              total_amount: total,
+              invoice_id: invoice.id,
+            })
+            .eq('id', order.id);
+        }
+
+        // Prepare items for PDF
+        const pdfItems = ordersToCheckout.flatMap(o => 
+          o.order_items.map(oi => ({
+            name: ordersToCheckout.length > 1 
+              ? `${oi.menu_item?.name} (Ord ${generateOrderNumber(o.id).slice(1)})`
+              : oi.menu_item?.name || 'Unknown',
             quantity: oi.quantity,
             unit_price: oi.unit_price,
-          })),
-          subtotal,
+          }))
+        );
+
+        // Generate and Print
+        await generateInvoicePDF({
+          invoiceNumber: invoice.invoice_number,
+          orderId: ordersToCheckout.length > 1 
+            ? `GROUP: ${ordersToCheckout.length} ORDERS` 
+            : generateOrderNumber(ordersToCheckout[0].id),
+          tableNumber: ordersToCheckout[0].restaurant_table?.table_number || 0,
+          items: pdfItems,
+          subtotal: totalSubtotal,
           taxAmount,
           grandTotal,
           issuedAt: invoice.issued_at,
+          mode: 'print',
         });
       }
 
-      toast.success('Invoice generated and downloaded!');
+      toast.success('Invoice generated and sent to printer!');
+      setCheckoutModal(null);
+      setSelectedOrderIds(new Set());
       fetchOrders();
     } catch (err) {
       toast.error('Checkout failed');
@@ -230,103 +269,19 @@ export default function BillingPage() {
     });
   };
 
-  const handleBulkCheckout = async () => {
+  const handleBulkCheckoutInit = () => {
     const selectedOrders = orders.filter((o) => selectedOrderIds.has(o.id));
     if (selectedOrders.length === 0) return;
-
-    setProcessingId('bulk');
-    try {
-      let totalSubtotal = 0;
-      let totalTaxAmount = 0;
-      let totalGrandTotal = 0;
-      const allItems: any[] = [];
-
-      // Process each order
-      for (const order of selectedOrders) {
-        const subtotal = order.order_items.reduce(
-          (sum, oi) => sum + oi.unit_price * oi.quantity, 0
-        );
-        const taxAmount = subtotal * TAX_RATE;
-        const grandTotal = subtotal + taxAmount;
-
-        totalSubtotal += subtotal;
-        totalTaxAmount += taxAmount;
-        totalGrandTotal += grandTotal;
-        allItems.push(...order.order_items);
-
-        // Update individual order
-        await supabase
-          .from('orders')
-          .update({
-            status: 'completed',
-            payment_status: 'paid',
-            total_amount: grandTotal,
-          })
-          .eq('id', order.id);
-      }
-
-      // Create ONE combined invoice record
-      const { data: invoice, error: invoiceError } = await supabase
-        .from('invoices')
-        .insert({
-          subtotal: totalSubtotal,
-          tax_amount: totalTaxAmount,
-          grand_total: totalGrandTotal,
-        })
-        .select()
-        .single();
-
-      if (invoiceError) throw invoiceError;
-
-      // Update ALL orders with the SAME invoice ID
-      if (invoice) {
-        for (const order of selectedOrders) {
-          const subtotal = order.order_items.reduce(
-            (sum, oi) => sum + oi.unit_price * oi.quantity, 0
-          );
-          const taxAmount = subtotal * TAX_RATE;
-          const grandTotal = subtotal + taxAmount;
-
-          await supabase
-            .from('orders')
-            .update({
-              status: 'completed',
-              payment_status: 'paid',
-              total_amount: grandTotal,
-              invoice_id: invoice.id,
-            })
-            .eq('id', order.id);
-        }
-
-        // Generate ONE PDF for the whole group
-        const pdfItems = selectedOrders.flatMap(o => 
-          o.order_items.map(oi => ({
-            name: `${oi.menu_item?.name} (Ord ${generateOrderNumber(o.id).slice(1)})`,
-            quantity: oi.quantity,
-            unit_price: oi.unit_price,
-          }))
-        );
-
-        await generateInvoicePDF({
-          invoiceNumber: invoice.invoice_number,
-          orderId: `GROUP: ${selectedOrders.length} ORDERS`,
-          tableNumber: selectedOrders[0].restaurant_table?.table_number || 0,
-          items: pdfItems,
-          subtotal: totalSubtotal,
-          taxAmount: totalTaxAmount,
-          grandTotal: totalGrandTotal,
-          issuedAt: invoice.issued_at,
-        });
-      }
-
-      toast.success(`Combined invoice for ${selectedOrders.length} orders generated!`);
-      setSelectedOrderIds(new Set());
-      fetchOrders();
-    } catch (err) {
-      toast.error('Bulk checkout failed');
-      console.error(err);
+    
+    // Check if all are served
+    const nonServed = selectedOrders.filter(o => o.status !== 'served');
+    if (nonServed.length > 0) {
+      toast.error('Only served orders can be checked out');
+      return;
     }
-    setProcessingId(null);
+
+    setCheckoutModal({ orders: selectedOrders });
+    setCheckoutStep(1);
   };
 
   return (
@@ -356,8 +311,7 @@ export default function BillingPage() {
                     <div>
                       <h2 className="font-bold text-text-primary text-lg">Table {table?.table_number || 'Unknown'}</h2>
                       <div className="flex items-center gap-2">
-                        <Badge variant="pending">{pending.length} Active</Badge>
-                        <Badge variant="completed">{completedGroups.length} Paid Bills</Badge>
+                        <Badge variant="pending">{pending.length} Active Orders</Badge>
                       </div>
                     </div>
                   </div>
@@ -422,80 +376,38 @@ export default function BillingPage() {
                             <span className="text-lg font-bold text-text-primary">{formatCurrency(subtotal)}</span>
                           </div>
 
-                          {!isSelected && (
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              className="w-full"
-                              loading={processingId === order.id}
-                              onClick={() => handleCheckout(order)}
-                              icon={<CreditCard className="w-4 h-4" />}
-                            >
-                              Checkout
-                            </Button>
-                          )}
-                        </div>
-                      </Card>
-                    );
-                  })}
-
-                  {/* Completed (Paid) Bills */}
-                  {completedGroups.map((group, idx) => {
-                    const isGroup = group.orders.length > 1;
-                    const allGroupItems = group.orders.flatMap((o: any) => o.order_items);
-                    
-                    return (
-                      <Card 
-                        key={idx} 
-                        className="bg-emerald-500/5 border-emerald-500/20 relative"
-                      >
-                        <div className="absolute top-3 right-3">
-                          <Badge variant="completed">Paid</Badge>
-                        </div>
-                        
-                        <div className="space-y-4">
-                          <div className="flex flex-col gap-1">
-                            <span className="text-xs font-mono text-text-muted">
-                              Invoice #{group.invoice_number}
-                            </span>
-                            <span className="text-xs text-text-muted">
-                              {isGroup ? `${group.orders.length} Orders Combined` : `Order ${generateOrderNumber(group.orders[0].id)}`}
-                            </span>
-                          </div>
-
-                          <div className="space-y-2 max-h-32 overflow-y-auto pr-2 scrollbar-hide">
-                            {allGroupItems.map((oi: any, i: number) => (
-                              <div key={i} className="flex justify-between text-xs text-text-secondary italic">
-                                <span>{oi.quantity}× {oi.menu_item?.name}</span>
-                                <span>{formatCurrency(oi.unit_price * oi.quantity)}</span>
+                          <div className="flex gap-2">
+                            {order.status === 'pending' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="flex-1 text-accent-danger hover:bg-accent-danger/5"
+                                loading={processingId === order.id}
+                                onClick={() => handleCancelOrder(order.id)}
+                                icon={<Trash2 className="w-4 h-4" />}
+                              >
+                                Cancel
+                              </Button>
+                            )}
+                            {order.status === 'served' && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                className="flex-1"
+                                onClick={() => {
+                                  setCheckoutModal({ orders: [order] });
+                                  setCheckoutStep(1);
+                                }}
+                                icon={<CreditCard className="w-4 h-4" />}
+                              >
+                                Checkout
+                              </Button>
+                            )}
+                            {order.status !== 'served' && order.status !== 'pending' && (
+                              <div className="w-full text-center py-2 px-3 rounded-lg bg-white/5 text-[10px] text-text-muted font-medium italic">
+                                Wait for "Served" status to bill
                               </div>
-                            ))}
-                          </div>
-
-                          <div className="pt-4 border-t border-emerald-500/10 flex items-center justify-between">
-                            <div className="flex flex-col">
-                              <span className="text-[10px] text-text-muted">Paid at {formatTime(group.issued_at)}</span>
-                              <span className="text-xl font-black text-emerald-500">{formatCurrency(group.grand_total)}</span>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => downloadInvoice(group.orders[0], 'download')}
-                              icon={<FileDown className="w-4 h-4" />}
-                            >
-                              PDF
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => downloadInvoice(group.orders[0], 'print')}
-                              icon={<Receipt className="w-4 h-4" />}
-                            >
-                              Print
-                            </Button>
+                            )}
                           </div>
                         </div>
                       </Card>
@@ -507,6 +419,95 @@ export default function BillingPage() {
           })}
         </div>
       )}
+
+      {/* Checkout Modal */}
+      <Modal
+        isOpen={!!checkoutModal}
+        onClose={() => !processingId && setCheckoutModal(null)}
+        title={checkoutStep === 1 ? "Review Invoice" : "Confirm Payment"}
+        size="lg"
+      >
+        {checkoutModal && (
+          <div className="space-y-6">
+            {checkoutStep === 1 ? (
+              <>
+                <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-2">
+                  {checkoutModal.orders.flatMap(o => o.order_items).map((item, i) => (
+                    <div key={i} className="flex justify-between items-center text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="w-6 h-6 rounded bg-accent-primary/10 text-accent-primary flex items-center justify-center font-bold text-xs">
+                          {item.quantity}
+                        </span>
+                        <span className="text-text-secondary">{item.menu_item?.name}</span>
+                      </div>
+                      <span className="font-medium">{formatCurrency(item.unit_price * item.quantity)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-4 border-t border-border space-y-2">
+                  <div className="flex justify-between text-sm text-text-muted">
+                    <span>Subtotal</span>
+                    <span>{formatCurrency(checkoutModal.orders.reduce((sum, o) => sum + o.order_items.reduce((s, oi) => s + oi.unit_price * oi.quantity, 0), 0))}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-text-muted">
+                    <span>Tax ({(TAX_RATE * 100).toFixed(0)}%)</span>
+                    <span>{formatCurrency(checkoutModal.orders.reduce((sum, o) => sum + o.order_items.reduce((s, oi) => s + oi.unit_price * oi.quantity, 0), 0) * TAX_RATE)}</span>
+                  </div>
+                  <div className="flex justify-between text-xl font-bold text-text-primary pt-2">
+                    <span>Grand Total</span>
+                    <span className="text-accent-primary">
+                      {formatCurrency(checkoutModal.orders.reduce((sum, o) => sum + o.order_items.reduce((s, oi) => s + oi.unit_price * oi.quantity, 0), 0) * (1 + TAX_RATE))}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button variant="ghost" className="flex-1" onClick={() => setCheckoutModal(null)}>Cancel</Button>
+                  <Button variant="primary" className="flex-1" onClick={() => setCheckoutStep(2)}>Next Step</Button>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-8 py-4">
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="w-20 h-20 rounded-full bg-accent-success/10 flex items-center justify-center text-accent-success animate-bounce-subtle">
+                    <CheckCircle className="w-10 h-10" />
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-bold">Confirm Payment</h4>
+                    <p className="text-text-muted text-sm px-8">
+                      Confirming will mark the orders as paid and generate a tax invoice for the printer.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 rounded-2xl p-6 flex justify-between items-center">
+                  <div className="flex flex-col">
+                    <span className="text-xs text-text-muted uppercase font-bold tracking-wider">Amount to Pay</span>
+                    <span className="text-3xl font-black text-accent-primary">
+                      {formatCurrency(checkoutModal.orders.reduce((sum, o) => sum + o.order_items.reduce((s, oi) => s + oi.unit_price * oi.quantity, 0), 0) * (1 + TAX_RATE))}
+                    </span>
+                  </div>
+                  <Printer className="w-10 h-10 text-text-muted/20" />
+                </div>
+
+                <div className="flex gap-3">
+                  <Button variant="ghost" className="flex-1" onClick={() => setCheckoutStep(1)} disabled={processingId === 'processing'}>Back</Button>
+                  <Button 
+                    variant="primary" 
+                    className="flex-1 py-6" 
+                    loading={processingId === 'processing'} 
+                    onClick={() => handleCheckout(checkoutModal.orders)}
+                    icon={<Printer className="w-5 h-5" />}
+                  >
+                    Confirm & Print
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
 
       {/* Bulk Action Bar */}
       {selectedOrderIds.size > 0 && (
@@ -538,10 +539,10 @@ export default function BillingPage() {
               variant="primary"
               className="flex-1 md:flex-none py-6 px-8 text-base"
               loading={processingId === 'bulk'}
-              onClick={handleBulkCheckout}
+              onClick={handleBulkCheckoutInit}
               icon={<CreditCard className="w-5 h-5" />}
             >
-              Confirm & Generate Bill
+              Checkout Selected
             </Button>
           </div>
         </div>

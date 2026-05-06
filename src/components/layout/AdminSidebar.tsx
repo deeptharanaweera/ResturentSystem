@@ -18,6 +18,7 @@ import {
   LogOut,
   User,
   Shield,
+  BarChart3,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/kitchen', label: 'Kitchen', icon: ChefHat },
   { href: '/admin/tables', label: 'Tables & QR', icon: QrCode },
   { href: '/admin/billing', label: 'Billing', icon: Receipt },
+  { href: '/admin/reports', label: 'Reports', icon: BarChart3 },
   { href: '/admin/menu-management', label: 'Menu Items', icon: UtensilsCrossed },
   { href: '/admin/users', label: 'Staff Management', icon: User },
 ];
