@@ -90,21 +90,29 @@ export default function ReportsPage() {
   }
 
   async function handlePrint(invoice: any) {
-    const order = invoice.orders[0];
-    if (!order) return;
+    if (!invoice.orders || invoice.orders.length === 0) return;
 
     const allItems = invoice.orders.flatMap((o: any) => o.order_items.map((oi: any) => ({
       name: invoice.orders.length > 1 
-        ? `${oi.menu_item?.name} (Ord ${o.id.slice(0, 4)})`
+        ? `${oi.menu_item?.name} (${o.order_number || o.id.slice(0, 8)})`
         : oi.menu_item?.name || 'Unknown',
       quantity: oi.quantity,
       unit_price: oi.unit_price,
     })));
 
+    const orderNumbers: string[] = invoice.orders.map((o: any) => o.order_number || `#${o.id.slice(0, 8).toUpperCase()}`);
+    const tableNumbers: number[] = Array.from(
+      new Set(
+        invoice.orders
+          .map((o: any) => o.restaurant_table?.table_number)
+          .filter((t: any): t is number => typeof t === 'number')
+      )
+    );
+
     await generateInvoicePDF({
       invoiceNumber: invoice.invoice_number,
-      orderId: invoice.orders.length > 1 ? `GROUP: ${invoice.orders.length}` : order.id,
-      tableNumber: order.restaurant_table?.table_number || 0,
+      orderNumbers,
+      tableNumbers,
       items: allItems,
       subtotal: invoice.subtotal,
       taxAmount: invoice.tax_amount,

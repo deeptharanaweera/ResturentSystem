@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect, use } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { MenuItem, Category, CartItem, RestaurantTable } from '@/types/database';
-import { formatCurrency } from '@/lib/utils';
+import { MenuItem, Category, CartItem, RestaurantTable, OrderType } from '@/types/database';
+import { formatCurrency, cn } from '@/lib/utils';
 import { RESTAURANT_NAME } from '@/lib/constants';
 import MenuCard from '@/components/menu/MenuCard';
 import CategoryFilter from '@/components/menu/CategoryFilter';
 import CartDrawer from '@/components/menu/CartDrawer';
 import OrderSummary from '@/components/orders/OrderSummary';
-import { ShoppingBag, UtensilsCrossed, Search, Loader2 } from 'lucide-react';
+import { ShoppingBag, UtensilsCrossed, Search, Loader2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PageProps {
@@ -24,6 +24,8 @@ export default function MenuPage({ params }: PageProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [orderType, setOrderType] = useState<OrderType>('dine_in');
+  const [customerName, setCustomerName] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,8 +33,11 @@ export default function MenuPage({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null);
   const [orderPlaced, setOrderPlaced] = useState<{
     orderId: string;
+    orderNumber?: string | null;
     items: { name: string; quantity: number; price: number }[];
     total: number;
+    orderType: OrderType;
+    customerName: string | null;
     createdAt: string;
   } | null>(null);
 
@@ -137,6 +142,10 @@ export default function MenuPage({ params }: PageProps) {
     if (cart.length === 0) return;
 
     try {
+      const custName = orderType === 'takeaway'
+        ? (customerName.trim() || `Table ${table?.table_number || ''} Takeaway`)
+        : null;
+
       // Create order
       const { data: order, error: orderError } = await supabase
         .from('orders')
@@ -145,6 +154,8 @@ export default function MenuPage({ params }: PageProps) {
           total_amount: cartTotal,
           status: 'pending',
           payment_status: 'unpaid',
+          order_type: orderType,
+          customer_name: custName,
         })
         .select()
         .single();
@@ -166,12 +177,15 @@ export default function MenuPage({ params }: PageProps) {
       // Show success
       setOrderPlaced({
         orderId: order.id,
+        orderNumber: order.order_number,
         items: cart.map((c) => ({
           name: c.menuItem.name,
           quantity: c.quantity,
           price: c.menuItem.price,
         })),
         total: cartTotal,
+        orderType: orderType,
+        customerName: custName,
         createdAt: order.created_at,
       });
 
@@ -223,9 +237,12 @@ export default function MenuPage({ params }: PageProps) {
     return (
       <OrderSummary
         orderId={orderPlaced.orderId}
+        orderNumber={orderPlaced.orderNumber}
         items={orderPlaced.items}
         total={orderPlaced.total}
         tableNumber={table.table_number}
+        orderType={orderPlaced.orderType}
+        customerName={orderPlaced.customerName}
         createdAt={orderPlaced.createdAt}
         onNewOrder={() => setOrderPlaced(null)}
       />
@@ -241,17 +258,50 @@ export default function MenuPage({ params }: PageProps) {
             <h1 className="text-lg font-bold gradient-text">{RESTAURANT_NAME}</h1>
             <p className="text-xs text-text-muted">Table {table?.table_number}</p>
           </div>
-          <button
-            onClick={() => setCartOpen(true)}
-            className="relative p-2.5 rounded-xl glass glass-hover transition-all cursor-pointer"
-          >
-            <ShoppingBag className="w-5 h-5 text-text-primary" />
-            {cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent-primary text-white text-[10px] font-bold flex items-center justify-center">
-                {cartCount}
-              </span>
-            )}
-          </button>
+
+          <div className="flex items-center gap-2">
+            {/* Order Type Toggle Pill in Header */}
+            <div className="flex items-center p-1 rounded-xl bg-bg-tertiary border border-border">
+              <button
+                onClick={() => setOrderType('dine_in')}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer',
+                  orderType === 'dine_in'
+                    ? 'bg-accent-primary text-white shadow-sm'
+                    : 'text-text-muted hover:text-text-primary'
+                )}
+                title="Dine In at Table"
+              >
+                <UtensilsCrossed className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Dine In</span>
+              </button>
+              <button
+                onClick={() => setOrderType('takeaway')}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer',
+                  orderType === 'takeaway'
+                    ? 'bg-amber-500 text-white shadow-sm'
+                    : 'text-text-muted hover:text-text-primary'
+                )}
+                title="Packaged for Take Away"
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Take Away</span>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setCartOpen(true)}
+              className="relative p-2.5 rounded-xl glass glass-hover transition-all cursor-pointer"
+            >
+              <ShoppingBag className="w-5 h-5 text-text-primary" />
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-accent-primary text-white text-[10px] font-bold flex items-center justify-center">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -306,7 +356,9 @@ export default function MenuPage({ params }: PageProps) {
           >
             <div className="flex items-center gap-3">
               <ShoppingBag className="w-5 h-5" />
-              <span className="text-sm font-medium">{cartCount} item{cartCount !== 1 ? 's' : ''}</span>
+              <span className="text-sm font-medium">
+                {cartCount} item{cartCount !== 1 ? 's' : ''} ({orderType === 'takeaway' ? 'Take Away' : 'Dine In'})
+              </span>
             </div>
             <span className="text-sm font-bold">{formatCurrency(cartTotal)}</span>
           </button>
@@ -318,6 +370,10 @@ export default function MenuPage({ params }: PageProps) {
         isOpen={cartOpen}
         onClose={() => setCartOpen(false)}
         items={cart}
+        orderType={orderType}
+        customerName={customerName}
+        onOrderTypeChange={setOrderType}
+        onCustomerNameChange={setCustomerName}
         onUpdateQuantity={updateQuantity}
         onUpdateInstructions={updateInstructions}
         onRemoveItem={removeItem}

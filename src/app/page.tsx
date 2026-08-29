@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { UtensilsCrossed, ChefHat, QrCode, Receipt, ArrowRight } from 'lucide-react';
+import { UtensilsCrossed, ChefHat, QrCode, Receipt, ArrowRight, ShoppingCart, Tv } from 'lucide-react';
 import { RESTAURANT_NAME, RESTAURANT_TAGLINE } from '@/lib/constants';
 
 export default function HomePage() {
@@ -32,6 +32,34 @@ export default function HomePage() {
 
         {/* Quick Links */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg mx-auto animate-slide-up" style={{ animationDelay: '0.1s' }}>
+          <Link
+            href="/pos"
+            className="group flex items-center gap-3 p-4 rounded-2xl glass glass-hover transition-all duration-300 sm:col-span-2 bg-gradient-to-r from-accent-primary/10 to-accent-secondary/10 border-accent-primary/20"
+          >
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center shadow-lg shadow-accent-primary/25">
+              <ShoppingCart className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left flex-1">
+              <p className="text-sm font-semibold text-text-primary">Point of Sale</p>
+              <p className="text-xs text-text-muted">Create orders & invoices</p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-text-muted group-hover:text-accent-primary group-hover:translate-x-0.5 transition-all" />
+          </Link>
+
+          <Link
+            href="/display"
+            className="group flex items-center gap-3 p-4 rounded-2xl glass glass-hover transition-all duration-300 sm:col-span-2 bg-emerald-500/10 border-emerald-500/20"
+          >
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+              <Tv className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left flex-1">
+              <p className="text-sm font-semibold text-text-primary">Live Order Display (TV Screen)</p>
+              <p className="text-xs text-text-muted">Customer order progress & pickup board</p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-text-muted group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+          </Link>
+
           <Link
             href="/admin"
             className="group flex items-center gap-3 p-4 rounded-2xl glass glass-hover transition-all duration-300"

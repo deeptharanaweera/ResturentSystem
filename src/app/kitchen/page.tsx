@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { OrderWithItems } from '@/types/database';
 import KitchenCard from '@/components/orders/KitchenCard';
-import { ChefHat, Clock, CheckCircle, Loader2, RefreshCw, LogOut, User, Shield } from 'lucide-react';
+import { ChefHat, Clock, CheckCircle, Loader2, RefreshCw, LogOut, User, Shield, Maximize2, Minimize2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -17,6 +17,25 @@ export default function KitchenPage() {
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => { });
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => { });
+      setIsFullscreen(false);
+    }
+  }
+
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   useEffect(() => {
     loadUser();
@@ -119,7 +138,7 @@ export default function KitchenPage() {
     <div className="min-h-screen bg-bg-primary">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-bg-primary/80 backdrop-blur-xl border-b border-border px-4 md:px-6 py-4">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
+        <div className="flex items-center justify-between max-w-full mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center">
               <ChefHat className="w-5 h-5 text-white" />
@@ -151,6 +170,15 @@ export default function KitchenPage() {
               </div>
             )}
 
+            {/* Fullscreen */}
+            <button
+              onClick={toggleFullscreen}
+              className="p-2.5 rounded-xl glass glass-hover text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+              title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen (Kitchen Mode)'}
+            >
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+
             {/* Refresh */}
             <button
               onClick={fetchOrders}
@@ -173,7 +201,7 @@ export default function KitchenPage() {
       </div>
 
       {/* Kanban Columns */}
-      <div className="max-w-7xl mx-auto p-4 md:p-6">
+      <div className="max-w-full mx-auto p-4 md:p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
           {/* Pending Column */}
           <div className="space-y-3">

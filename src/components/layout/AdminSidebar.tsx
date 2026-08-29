@@ -19,12 +19,16 @@ import {
   User,
   Shield,
   BarChart3,
+  ShoppingCart,
+  Tv,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/pos', label: 'POS', icon: ShoppingCart },
   { href: '/kitchen', label: 'Kitchen', icon: ChefHat },
+  { href: '/display', label: 'Order Display', icon: Tv },
   { href: '/admin/tables', label: 'Tables & QR', icon: QrCode },
   { href: '/admin/billing', label: 'Billing', icon: Receipt },
   { href: '/admin/reports', label: 'Reports', icon: BarChart3 },

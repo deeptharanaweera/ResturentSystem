@@ -125,12 +125,11 @@ export default function BillingPage() {
         );
 
         // Generate and Print
+        const orderNumbers = ordersToCheckout.map(o => generateOrderNumber(o.id, o.order_number));
         await generateInvoicePDF({
           invoiceNumber: invoice.invoice_number,
-          orderId: ordersToCheckout.length > 1 
-            ? `GROUP: ${ordersToCheckout.length} ORDERS` 
-            : generateOrderNumber(ordersToCheckout[0].id),
-          tableNumber: ordersToCheckout[0].restaurant_table?.table_number || 0,
+          orderNumbers,
+          tableNumber: ordersToCheckout[0].restaurant_table?.table_number || null,
           items: pdfItems,
           subtotal: totalSubtotal,
           taxAmount,
@@ -171,15 +170,16 @@ export default function BillingPage() {
         .eq('invoice_id', invoice.id);
 
       let allItems: any[] = [];
-      let displayOrderId = generateOrderNumber(order.id);
+      const ordersList = (siblingOrders && siblingOrders.length > 0 ? siblingOrders : [order]) as unknown as OrderWithItems[];
+      const orderNumbers = ordersList.map(o => generateOrderNumber(o.id, o.order_number));
+      const tableNumbers = [...new Set(ordersList.map(o => o.restaurant_table?.table_number).filter((t): t is number => typeof t === 'number'))];
 
-      if (siblingOrders && siblingOrders.length > 1) {
-        allItems = (siblingOrders as unknown as OrderWithItems[]).flatMap(o => o.order_items.map(oi => ({
-          name: `${oi.menu_item?.name} (Ord ${generateOrderNumber(o.id).slice(1)})`,
+      if (ordersList.length > 1) {
+        allItems = ordersList.flatMap(o => o.order_items.map(oi => ({
+          name: `${oi.menu_item?.name} (${generateOrderNumber(o.id, o.order_number)})`,
           quantity: oi.quantity,
           unit_price: oi.unit_price,
         })));
-        displayOrderId = `GROUP: ${siblingOrders.length} ORDERS`;
       } else {
         allItems = order.order_items.map(oi => ({
           name: oi.menu_item?.name || 'Unknown',
@@ -190,8 +190,8 @@ export default function BillingPage() {
 
       await generateInvoicePDF({
         invoiceNumber: invoice.invoice_number,
-        orderId: displayOrderId,
-        tableNumber: order.restaurant_table?.table_number || 0,
+        orderNumbers,
+        tableNumbers,
         items: allItems,
         subtotal: invoice.subtotal,
         taxAmount: invoice.tax_amount,

@@ -39,6 +39,12 @@ export function getTimeAgo(dateString: string): string {
   return `${Math.floor(diffHours / 24)}d ago`;
 }
 
-export function generateOrderNumber(id: string): string {
+export function generateOrderNumber(id: string, orderNumber?: string | null): string {
+  if (orderNumber && orderNumber.trim()) return orderNumber;
   return `#${id.slice(0, 8).toUpperCase()}`;
+}
+
+export function getOrderDisplay(order: { id: string; order_number?: string | null }): string {
+  if (order.order_number && order.order_number.trim()) return order.order_number;
+  return `#${order.id.slice(0, 8).toUpperCase()}`;
 }

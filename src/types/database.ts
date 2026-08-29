@@ -1,3 +1,6 @@
+export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'other';
+export type OrderType = 'dine_in' | 'takeaway' | 'counter';
+
 export interface RestaurantTable {
   id: string;
   table_number: number;
@@ -26,11 +29,14 @@ export interface MenuItem {
 
 export interface Order {
   id: string;
-  table_id: string;
+  order_number: string | null;
+  table_id: string | null;
   total_amount: number;
   status: 'pending' | 'preparing' | 'served' | 'completed' | 'cancelled';
   payment_status: 'unpaid' | 'paid';
   invoice_id: string | null;
+  order_type: OrderType;
+  customer_name: string | null;
   created_at: string;
 }
 
@@ -53,11 +59,23 @@ export interface Invoice {
   issued_at: string;
 }
 
+export interface InvoicePayment {
+  id: string;
+  invoice_id: string;
+  payment_method: PaymentMethod;
+  amount: number;
+  created_at: string;
+}
+
 // Joined types for convenience
 export interface OrderWithItems extends Order {
   order_items: (OrderItem & { menu_item: MenuItem })[];
   restaurant_table: RestaurantTable;
   invoice: Invoice | null;
+}
+
+export interface InvoiceWithPayments extends Invoice {
+  payments: InvoicePayment[];
 }
 
 export interface MenuItemWithCategory extends MenuItem {

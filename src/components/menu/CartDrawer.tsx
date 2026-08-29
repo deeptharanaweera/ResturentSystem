@@ -1,16 +1,20 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CartItem } from '@/types/database';
+import { CartItem, OrderType } from '@/types/database';
 import { formatCurrency, cn } from '@/lib/utils';
 import { RESTAURANT_NAME } from '@/lib/constants';
-import { X, ShoppingBag, Minus, Plus, Trash2, MessageSquare, Loader2 } from 'lucide-react';
+import { X, ShoppingBag, Minus, Plus, Trash2, MessageSquare, UtensilsCrossed, Package, User } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
 interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   items: CartItem[];
+  orderType: OrderType;
+  customerName: string;
+  onOrderTypeChange: (type: OrderType) => void;
+  onCustomerNameChange: (name: string) => void;
   onUpdateQuantity: (itemId: string, quantity: number) => void;
   onUpdateInstructions: (itemId: string, instructions: string) => void;
   onRemoveItem: (itemId: string) => void;
@@ -21,6 +25,10 @@ export default function CartDrawer({
   isOpen,
   onClose,
   items,
+  orderType,
+  customerName,
+  onOrderTypeChange,
+  onCustomerNameChange,
   onUpdateQuantity,
   onUpdateInstructions,
   onRemoveItem,
@@ -82,6 +90,58 @@ export default function CartDrawer({
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Order Type Selector */}
+        <div className="px-5 py-3 border-b border-border space-y-2.5 shrink-0 bg-white/[0.02]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-text-secondary">Order Type</span>
+            <span className="text-[10px] text-text-muted">
+              {orderType === 'takeaway' ? 'Packaged for Take Away' : 'Dine In at Table'}
+            </span>
+          </div>
+
+          <div className="flex gap-2 p-1 rounded-xl bg-bg-tertiary border border-border/50">
+            <button
+              type="button"
+              onClick={() => onOrderTypeChange('dine_in')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer',
+                orderType === 'dine_in'
+                  ? 'bg-accent-primary text-white shadow-md shadow-accent-primary/20'
+                  : 'text-text-muted hover:text-text-secondary hover:bg-white/5'
+              )}
+            >
+              <UtensilsCrossed className="w-3.5 h-3.5" />
+              Dine In
+            </button>
+            <button
+              type="button"
+              onClick={() => onOrderTypeChange('takeaway')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer',
+                orderType === 'takeaway'
+                  ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
+                  : 'text-text-muted hover:text-text-secondary hover:bg-white/5'
+              )}
+            >
+              <Package className="w-3.5 h-3.5" />
+              Take Away
+            </button>
+          </div>
+
+          {orderType === 'takeaway' && (
+            <div className="relative animate-scale-in">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
+              <input
+                type="text"
+                placeholder="Name for takeaway packaging (optional)..."
+                value={customerName}
+                onChange={(e) => onCustomerNameChange(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-xl text-xs bg-bg-tertiary border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-amber-500/50 transition-colors"
+              />
+            </div>
+          )}
         </div>
 
         {/* Items */}
