@@ -3,23 +3,30 @@
 import React from 'react';
 import { formatCurrency, formatTime, generateOrderNumber } from '@/lib/utils';
 import { RESTAURANT_NAME } from '@/lib/constants';
-import { CheckCircle, Clock, UtensilsCrossed } from 'lucide-react';
+import { OrderType } from '@/types/database';
+import { CheckCircle, Clock, UtensilsCrossed, Package } from 'lucide-react';
 import Card from '@/components/ui/Card';
 
 interface OrderSummaryProps {
   orderId: string;
+  orderNumber?: string | null;
   items: { name: string; quantity: number; price: number }[];
   total: number;
   tableNumber: number;
+  orderType?: OrderType;
+  customerName?: string | null;
   createdAt: string;
   onNewOrder: () => void;
 }
 
 export default function OrderSummary({
   orderId,
+  orderNumber,
   items,
   total,
   tableNumber,
+  orderType = 'dine_in',
+  customerName,
   createdAt,
   onNewOrder,
 }: OrderSummaryProps) {
@@ -44,8 +51,26 @@ export default function OrderSummary({
           {/* Order Details */}
           <div className="glass rounded-xl p-4 text-left space-y-3">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-text-muted">Order ID</span>
-              <span className="font-mono text-text-primary">{generateOrderNumber(orderId)}</span>
+              <span className="text-text-muted">Order Number</span>
+              <span className="font-mono font-bold text-accent-primary bg-accent-primary/10 px-2.5 py-0.5 rounded-lg border border-accent-primary/20">
+                {generateOrderNumber(orderId, orderNumber)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-text-muted">Type</span>
+              <span className="flex items-center gap-1 text-xs font-semibold">
+                {orderType === 'takeaway' ? (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 flex items-center gap-1">
+                    <Package className="w-3 h-3" />
+                    Take Away {customerName ? `(${customerName})` : ''}
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary border border-accent-primary/25 flex items-center gap-1">
+                    <UtensilsCrossed className="w-3 h-3" />
+                    Dine In
+                  </span>
+                )}
+              </span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-text-muted">Table</span>

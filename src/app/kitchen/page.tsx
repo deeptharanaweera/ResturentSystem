@@ -4,19 +4,40 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { OrderWithItems } from '@/types/database';
 import KitchenCard from '@/components/orders/KitchenCard';
-import { ChefHat, Clock, CheckCircle, Loader2, RefreshCw, LogOut, User, Shield } from 'lucide-react';
+import { ChefHat, Clock, CheckCircle, Loader2, RefreshCw, LogOut, User, Shield, Maximize2, Minimize2, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { RESTAURANT_NAME } from '@/lib/constants';
+import { useBranch } from '@/context/BranchContext';
 
 export default function KitchenPage() {
   const supabase = createClient();
   const router = useRouter();
+  const { currentBranch, userBranches, switchBranch } = useBranch();
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => { });
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => { });
+      setIsFullscreen(false);
+    }
+  }
+
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   useEffect(() => {
     loadUser();
@@ -48,7 +69,7 @@ export default function KitchenPage() {
       supabase.removeChannel(channel);
       clearInterval(interval);
     };
-  }, []);
+  }, [currentBranch]);
 
   async function loadUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -70,7 +91,7 @@ export default function KitchenPage() {
   }
 
   async function fetchOrders() {
-    const { data, error } = await supabase
+    let query = supabase
       .from('orders')
       .select(`
         *,
@@ -80,8 +101,13 @@ export default function KitchenPage() {
           menu_item:menu_items(*)
         )
       `)
-      .in('status', ['pending', 'preparing', 'served'])
-      .order('created_at', { ascending: true });
+      .in('status', ['pending', 'preparing', 'served']);
+
+    if (currentBranch) {
+      query = query.eq('branch_id', currentBranch.id);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: true });
 
     if (!error && data) {
       setOrders(data as unknown as OrderWithItems[]);
@@ -119,13 +145,37 @@ export default function KitchenPage() {
     <div className="min-h-screen bg-bg-primary">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-bg-primary/80 backdrop-blur-xl border-b border-border px-4 md:px-6 py-4">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
+        <div className="flex items-center justify-between max-w-full mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center">
               <ChefHat className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-text-primary">Kitchen Dashboard</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold text-text-primary">Kitchen Dashboard</h1>
+                {currentBranch && (
+                  userBranches.length > 1 ? (
+                    <select
+                      value={currentBranch.id}
+                      onChange={(e) => {
+                        const b = userBranches.find((x) => x.id === e.target.value);
+                        if (b) switchBranch(b);
+                      }}
+                      className="px-2 py-0.5 rounded-lg text-xs font-bold bg-accent-primary/10 border border-accent-primary/20 text-accent-primary focus:outline-none cursor-pointer"
+                    >
+                      {userBranches.map((b) => (
+                        <option key={b.id} value={b.id} className="bg-bg-secondary text-text-primary">
+                          {b.name} ({b.code})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="font-mono text-xs font-bold text-accent-primary bg-accent-primary/10 px-2 py-0.5 rounded-lg border border-accent-primary/20">
+                      {currentBranch.code}
+                    </span>
+                  )
+                )}
+              </div>
               <div className="flex items-center gap-1.5 text-xs text-text-muted">
                 <div className="pulse-dot" />
                 <span>Live — {orders.length} active orders</span>
@@ -142,14 +192,29 @@ export default function KitchenPage() {
                 <div className="flex items-center gap-1">
                   <Shield className="w-3 h-3 text-text-muted" />
                   <span className={cn(
-                    'text-[10px] font-medium capitalize',
-                    userRole === 'admin' ? 'text-accent-primary' : 'text-accent-warning'
+                    'text-[10px] font-semibold capitalize',
+                    userRole === 'super_admin'
+                      ? 'text-fuchsia-400 font-bold'
+                      : userRole === 'admin'
+                      ? 'text-accent-primary'
+                      : userRole === 'pos'
+                      ? 'text-cyan-400'
+                      : 'text-accent-warning'
                   )}>
-                    {userRole}
+                    {userRole === 'super_admin' ? 'Super Admin' : userRole}
                   </span>
                 </div>
               </div>
             )}
+
+            {/* Fullscreen */}
+            <button
+              onClick={toggleFullscreen}
+              className="p-2.5 rounded-xl glass glass-hover text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+              title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen (Kitchen Mode)'}
+            >
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
 
             {/* Refresh */}
             <button
@@ -173,7 +238,7 @@ export default function KitchenPage() {
       </div>
 
       {/* Kanban Columns */}
-      <div className="max-w-7xl mx-auto p-4 md:p-6">
+      <div className="max-w-full mx-auto p-4 md:p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
           {/* Pending Column */}
           <div className="space-y-3">

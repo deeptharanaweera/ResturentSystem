@@ -5,7 +5,7 @@ import { OrderWithItems } from '@/types/database';
 import { formatCurrency, getTimeAgo, generateOrderNumber, cn } from '@/lib/utils';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
-import { Clock, ChefHat, CheckCircle, UtensilsCrossed } from 'lucide-react';
+import { Clock, ChefHat, CheckCircle, UtensilsCrossed, Package, Store, Check } from 'lucide-react';
 
 interface KitchenCardProps {
   order: OrderWithItems;
@@ -18,36 +18,91 @@ export default function KitchenCard({ order, onStatusChange }: KitchenCardProps)
   const isUrgent = order.status === 'pending' && diffMins > 10;
   const isCritical = order.status === 'pending' && diffMins > 20;
 
+  const isTakeaway = order.order_type === 'takeaway';
+  const isCounter = order.order_type === 'counter';
+
   return (
     <div className={cn(
       'rounded-2xl glass p-4 space-y-3 transition-all duration-300 animate-slide-up',
       isCritical && 'ring-1 ring-accent-danger/50 shadow-lg shadow-accent-danger/10',
       isUrgent && !isCritical && 'ring-1 ring-accent-warning/50 shadow-lg shadow-accent-warning/10'
     )}>
+      {/* Header with order number, status, and payment tag */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-text-muted">{generateOrderNumber(order.id)}</span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs font-mono font-bold text-text-primary bg-white/5 px-2 py-0.5 rounded-lg border border-white/10">
+            {generateOrderNumber(order.id, order.order_number)}
+          </span>
           <Badge variant={order.status as 'pending' | 'preparing' | 'served'}>
             {order.status === 'pending' && <Clock className="w-3 h-3" />}
             {order.status === 'preparing' && <ChefHat className="w-3 h-3" />}
             {order.status === 'served' && <CheckCircle className="w-3 h-3" />}
             {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
           </Badge>
+          {order.payment_status === 'paid' ? (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+              PAID
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/25">
+              UNPAID
+            </span>
+          )}
         </div>
-        <div className={cn('text-xs', isCritical ? 'text-accent-danger font-medium' : isUrgent ? 'text-accent-warning' : 'text-text-muted')}>
+        <div className={cn('text-xs shrink-0', isCritical ? 'text-accent-danger font-medium' : isUrgent ? 'text-accent-warning' : 'text-text-muted')}>
           {timeAgo}
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 rounded-lg bg-accent-primary/15 flex items-center justify-center">
-          <UtensilsCrossed className="w-4 h-4 text-accent-primary" />
-        </div>
-        <span className="text-sm font-semibold text-text-primary">
-          Table {order.restaurant_table?.table_number || '?'}
-        </span>
+      {/* Order Type & Location Banner */}
+      <div className="flex items-center gap-2.5 p-2 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+        {isTakeaway ? (
+          <>
+            <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+              <Package className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Take Away</span>
+                {order.restaurant_table?.table_number && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-accent-primary/15 text-accent-primary border border-accent-primary/20">
+                    Table {order.restaurant_table.table_number}
+                  </span>
+                )}
+              </div>
+              <span className="text-sm font-semibold text-text-primary truncate block">
+                {order.customer_name ? `Customer: ${order.customer_name}` : order.restaurant_table ? `Table ${order.restaurant_table.table_number} Takeaway` : 'Take Away Customer'}
+              </span>
+            </div>
+          </>
+        ) : isCounter ? (
+          <>
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+              <Store className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">Counter</span>
+              <span className="text-sm font-semibold text-text-primary truncate block">
+                Counter Order
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="w-8 h-8 rounded-lg bg-accent-primary/15 text-accent-primary flex items-center justify-center shrink-0">
+              <UtensilsCrossed className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-accent-primary block">Dine In</span>
+              <span className="text-sm font-semibold text-text-primary">
+                Table {order.restaurant_table?.table_number || '?'}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
+      {/* Item List */}
       <div className="space-y-1.5 bg-bg-primary/40 rounded-xl p-3">
         {order.order_items.map((oi) => (
           <div key={oi.id} className="flex items-start justify-between gap-2 text-sm">
@@ -64,6 +119,7 @@ export default function KitchenCard({ order, onStatusChange }: KitchenCardProps)
         ))}
       </div>
 
+      {/* Action Buttons */}
       <div className="flex gap-2 pt-1">
         {order.status === 'pending' && (
           <Button variant="primary" size="sm" className="flex-1" onClick={() => onStatusChange(order.id, 'preparing')}
@@ -71,9 +127,18 @@ export default function KitchenCard({ order, onStatusChange }: KitchenCardProps)
         )}
         {order.status === 'preparing' && (
           <Button variant="success" size="sm" className="flex-1" onClick={() => onStatusChange(order.id, 'served')}
-            icon={<CheckCircle className="w-3.5 h-3.5" />}>Mark as Served</Button>
+            icon={<CheckCircle className="w-3.5 h-3.5" />}>
+            {isTakeaway ? 'Ready for Pickup' : 'Mark as Served'}
+          </Button>
+        )}
+        {order.status === 'served' && (
+          <Button variant="ghost" size="sm" className="flex-1 text-text-muted hover:text-text-primary" onClick={() => onStatusChange(order.id, 'completed')}
+            icon={<Check className="w-3.5 h-3.5" />}>
+            Complete / Dismiss
+          </Button>
         )}
       </div>
     </div>
   );
 }
+
