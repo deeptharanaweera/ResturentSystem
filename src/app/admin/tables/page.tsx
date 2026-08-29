@@ -13,6 +13,7 @@ import { QrCode, Plus, Power, PowerOff, Trash2, Eye, ShoppingCart, Loader2, Cloc
 import { toast } from 'sonner';
 import { cn, formatCurrency } from '@/lib/utils';
 import Link from 'next/link';
+import { useBranch } from '@/context/BranchContext';
 
 interface TableWithStatus extends RestaurantTable {
   active_orders_count: number;
@@ -21,6 +22,7 @@ interface TableWithStatus extends RestaurantTable {
 
 export default function TablesPage() {
   const supabase = createClient();
+  const { currentBranch } = useBranch();
   const [tables, setTables] = useState<TableWithStatus[]>([]);
   const [newTableNumber, setNewTableNumber] = useState('');
   const [loading, setLoading] = useState(true);
@@ -46,7 +48,7 @@ export default function TablesPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [currentBranch]);
 
   async function loadUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -61,11 +63,16 @@ export default function TablesPage() {
   }
 
   async function fetchTables() {
-    // Fetch tables
-    const { data: tablesData } = await supabase
+    // Fetch tables scoped by branch
+    let query = supabase
       .from('restaurant_tables')
-      .select('*')
-      .order('table_number', { ascending: true });
+      .select('*');
+
+    if (currentBranch) {
+      query = query.eq('branch_id', currentBranch.id);
+    }
+
+    const { data: tablesData } = await query.order('table_number', { ascending: true });
 
     if (!tablesData) return;
 
@@ -120,6 +127,7 @@ export default function TablesPage() {
     }
 
     const { error } = await supabase.from('restaurant_tables').insert({
+      branch_id: currentBranch?.id || null,
       table_number: num,
       is_active: true,
     });
@@ -176,7 +184,7 @@ export default function TablesPage() {
           <p className="text-sm text-text-muted mt-1">View active orders and manage tables</p>
         </div>
         
-        {userRole === 'admin' && (
+        {(userRole === 'admin' || userRole === 'super_admin') && (
           <div className="flex items-center gap-3">
             <Input
               placeholder="New Table #"
@@ -253,7 +261,7 @@ export default function TablesPage() {
             </div>
 
             {/* Admin Actions Dropdown/Popover (Simulated) */}
-            {userRole === 'admin' && (
+            {(userRole === 'admin' || userRole === 'super_admin') && (
               <div className="absolute top-2 right-2 flex gap-1">
                 <button
                   onClick={() => setQrModal({ tableId: table.id, tableNumber: table.table_number })}

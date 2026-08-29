@@ -62,18 +62,20 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Admin routes require 'admin' role, except for tables/orders which waiters can access
+  const isAdmin = role === 'admin' || role === 'super_admin';
+
+  // Admin routes require 'admin' or 'super_admin' role, except for tables/orders which waiters can access
   if (pathname.startsWith('/admin')) {
     const isWaiterAllowedPath = pathname.startsWith('/admin/tables') || pathname.startsWith('/admin/orders');
-    if (role !== 'admin' && !(role === 'waiter' && isWaiterAllowedPath)) {
+    if (!isAdmin && !(role === 'waiter' && isWaiterAllowedPath)) {
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('error', 'unauthorized');
       return NextResponse.redirect(loginUrl);
     }
   }
 
-  // Kitchen routes require 'admin' or 'kitchen' role
-  if (pathname.startsWith('/kitchen') && role !== 'admin' && role !== 'kitchen') {
+  // Kitchen routes require 'admin', 'super_admin', or 'kitchen' role
+  if (pathname.startsWith('/kitchen') && !isAdmin && role !== 'kitchen' && role !== 'waiter') {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('error', 'unauthorized');
     return NextResponse.redirect(loginUrl);

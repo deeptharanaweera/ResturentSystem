@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { OrderWithItems } from '@/types/database';
 import { generateOrderNumber, formatTime, getTimeAgo, cn } from '@/lib/utils';
 import { RESTAURANT_NAME, RESTAURANT_TAGLINE } from '@/lib/constants';
+import { useBranch } from '@/context/BranchContext';
 import {
   ChefHat,
   CheckCircle2,
@@ -18,10 +19,12 @@ import {
   Store,
   Sparkles,
   Flame,
+  Building2,
 } from 'lucide-react';
 
 export default function OrderDisplayPage() {
   const supabase = createClient();
+  const { currentBranch, userBranches, switchBranch } = useBranch();
   const [mounted, setMounted] = useState(false);
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -59,7 +62,7 @@ export default function OrderDisplayPage() {
       supabase.removeChannel(channel);
       clearInterval(interval);
     };
-  }, []);
+  }, [currentBranch]);
 
   // Play audio chime when order becomes served/ready
   function playReadyChime() {
@@ -109,7 +112,7 @@ export default function OrderDisplayPage() {
   }
 
   async function fetchOrders() {
-    const { data } = await supabase
+    let query = supabase
       .from('orders')
       .select(`
         *,
@@ -117,8 +120,13 @@ export default function OrderDisplayPage() {
         order_items(*, menu_item:menu_items(*)),
         invoice:invoices!fk_orders_invoice(*)
       `)
-      .in('status', ['pending', 'preparing', 'served'])
-      .order('created_at', { ascending: true });
+      .in('status', ['pending', 'preparing', 'served']);
+
+    if (currentBranch) {
+      query = query.eq('branch_id', currentBranch.id);
+    }
+
+    const { data } = await query.order('created_at', { ascending: true });
 
     if (data) {
       const fetched = data as unknown as OrderWithItems[];
@@ -181,11 +189,18 @@ export default function OrderDisplayPage() {
             <Flame className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl lg:text-3xl font-black tracking-tight gradient-text">
-              {RESTAURANT_NAME}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl lg:text-3xl font-black tracking-tight gradient-text">
+                {RESTAURANT_NAME}
+              </h1>
+              {currentBranch && (
+                <span className="font-mono text-xs font-bold text-accent-primary bg-accent-primary/10 px-2.5 py-0.5 rounded-xl border border-accent-primary/20">
+                  {currentBranch.name} ({currentBranch.code})
+                </span>
+              )}
+            </div>
             <p className="text-xs text-text-muted font-medium tracking-wide">
-              Live Order Status Display
+              Live Order Status Display &bull; {currentBranch ? currentBranch.name : 'All Locations'}
             </p>
           </div>
         </div>

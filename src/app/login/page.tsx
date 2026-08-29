@@ -67,17 +67,43 @@ export default function LoginPage() {
     }
 
     console.log('Role found:', userRole.role);
+
+    // Check user's assigned branches
+    const { data: userBranches } = await supabase
+      .from('user_branches')
+      .select('branch_id, is_default, branch:branches(*)')
+      .eq('user_id', data.user.id);
+
+    const activeBranches = (userBranches || [])
+      .map((ub: any) => ub.branch)
+      .filter((b: any) => b && b.is_active);
+
+    if (activeBranches.length > 1) {
+      toast.success(`Welcome back! Please select your working branch.`);
+      router.push('/select-branch');
+      setLoading(false);
+      return;
+    }
+
+    if (activeBranches.length === 1) {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('selected_branch_id', activeBranches[0].id);
+      }
+    }
+
     toast.success(`Welcome back! Role: ${userRole.role.charAt(0).toUpperCase() + userRole.role.slice(1)}`);
 
     // Redirect based on role
     if (userRole.role === 'kitchen') {
       router.push('/kitchen');
-    } else if (userRole.role === 'admin') {
+    } else if (userRole.role === 'pos') {
+      router.push('/pos');
+    } else if (userRole.role === 'admin' || userRole.role === 'super_admin') {
       router.push(redirectTo);
     } else if (userRole.role === 'waiter') {
       router.push('/admin/tables');
     } else {
-      router.push('/');
+      router.push('/pos');
     }
 
     setLoading(false);
@@ -157,13 +183,13 @@ export default function LoginPage() {
               <div className="h-px flex-1 bg-border" />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div className="text-center px-3 py-2 rounded-lg bg-accent-primary/5 border border-accent-primary/10">
-                <p className="text-[10px] font-semibold text-accent-primary">Admin</p>
-                <p className="text-[9px] text-text-muted mt-0.5">Full dashboard access</p>
+              <div className="text-center px-3 py-2 rounded-lg bg-fuchsia-500/5 border border-fuchsia-500/10">
+                <p className="text-[10px] font-semibold text-fuchsia-400">Super Admin / Admin</p>
+                <p className="text-[9px] text-text-muted mt-0.5">Full system control</p>
               </div>
-              <div className="text-center px-3 py-2 rounded-lg bg-accent-warning/5 border border-accent-warning/10">
-                <p className="text-[10px] font-semibold text-accent-warning">Kitchen</p>
-                <p className="text-[9px] text-text-muted mt-0.5">Kitchen orders only</p>
+              <div className="text-center px-3 py-2 rounded-lg bg-cyan-500/5 border border-cyan-500/10">
+                <p className="text-[10px] font-semibold text-cyan-400">POS Cashier</p>
+                <p className="text-[9px] text-text-muted mt-0.5">Shift &amp; checkout</p>
               </div>
             </div>
           </div>

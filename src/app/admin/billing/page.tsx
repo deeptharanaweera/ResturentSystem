@@ -12,9 +12,11 @@ import Badge from '@/components/ui/Badge';
 import { Receipt, FileDown, CreditCard, Loader2, Trash2, CheckCircle, AlertCircle, Printer, X } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '@/components/ui/Modal';
+import { useBranch } from '@/context/BranchContext';
 
 export default function BillingPage() {
   const supabase = createClient();
+  const { currentBranch } = useBranch();
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -24,11 +26,12 @@ export default function BillingPage() {
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+  }, [currentBranch]);
+
   async function fetchOrders() {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select(`
           *,
@@ -36,8 +39,13 @@ export default function BillingPage() {
           order_items(*, menu_item:menu_items(*)),
           invoice:invoices!fk_orders_invoice(*)
         `)
-        .in('status', ['pending', 'preparing', 'served'])
-        .order('created_at', { ascending: false });
+        .in('status', ['pending', 'preparing', 'served']);
+
+      if (currentBranch) {
+        query = query.eq('branch_id', currentBranch.id);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching orders:', error);
