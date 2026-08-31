@@ -33,10 +33,11 @@ export default function KitchenCard({ order, onStatusChange }: KitchenCardProps)
           <span className="text-xs font-mono font-bold text-text-primary bg-white/5 px-2 py-0.5 rounded-lg border border-white/10">
             {generateOrderNumber(order.id, order.order_number)}
           </span>
-          <Badge variant={order.status as 'pending' | 'preparing' | 'served'}>
+          <Badge variant={order.status as 'pending' | 'preparing' | 'completed' | 'served'}>
             {order.status === 'pending' && <Clock className="w-3 h-3" />}
             {order.status === 'preparing' && <ChefHat className="w-3 h-3" />}
-            {order.status === 'served' && <CheckCircle className="w-3 h-3" />}
+            {order.status === 'completed' && <CheckCircle className="w-3 h-3" />}
+            {order.status === 'served' && <Check className="w-3 h-3" />}
             {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
           </Badge>
           {order.payment_status === 'paid' ? (
@@ -120,22 +121,28 @@ export default function KitchenCard({ order, onStatusChange }: KitchenCardProps)
       </div>
 
       {/* Action Buttons */}
-      <div className="flex gap-2 pt-1">
+      <div className="flex flex-col gap-2 pt-1">
         {order.status === 'pending' && (
-          <Button variant="primary" size="sm" className="flex-1" onClick={() => onStatusChange(order.id, 'preparing')}
+          <Button variant="primary" size="sm" className="w-full" onClick={() => onStatusChange(order.id, 'preparing')}
             icon={<ChefHat className="w-3.5 h-3.5" />}>Start Preparing</Button>
         )}
         {order.status === 'preparing' && (
-          <Button variant="success" size="sm" className="flex-1" onClick={() => onStatusChange(order.id, 'served')}
+          <Button variant="success" size="sm" className="w-full bg-teal-600 hover:bg-teal-700 text-white border-teal-500/30" onClick={() => onStatusChange(order.id, 'completed')}
             icon={<CheckCircle className="w-3.5 h-3.5" />}>
-            {isTakeaway ? 'Ready for Pickup' : 'Mark as Served'}
+            Mark as Complete
           </Button>
         )}
-        {order.status === 'served' && (
-          <Button variant="ghost" size="sm" className="flex-1 text-text-muted hover:text-text-primary" onClick={() => onStatusChange(order.id, 'completed')}
-            icon={<Check className="w-3.5 h-3.5" />}>
-            Complete / Dismiss
-          </Button>
+        {order.status === 'completed' && (
+          (isTakeaway || isCounter || !order.table_id) ? (
+            <Button variant="primary" size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => onStatusChange(order.id, 'served')}
+              icon={<Check className="w-3.5 h-3.5" />}>
+              Mark as Served
+            </Button>
+          ) : (
+            <div className="w-full text-center py-2 px-3 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-text-muted font-medium">
+              Mark as Served in Table Management
+            </div>
+          )
         )}
       </div>
     </div>

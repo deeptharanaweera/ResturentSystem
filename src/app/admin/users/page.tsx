@@ -16,7 +16,6 @@ import {
   Loader2,
   Building2,
   Check,
-  Edit2,
   KeyRound,
   CheckCircle2,
   XCircle,
@@ -24,7 +23,7 @@ import {
   Search,
   Eye,
   EyeOff,
-  Clock,
+  Phone,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useBranch } from '@/context/BranchContext';
@@ -52,6 +51,8 @@ export default function UsersManagementPage() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
+    displayName: '',
+    phone: '',
     email: '',
     password: '',
     role: 'waiter' as UserRoleType,
@@ -90,7 +91,7 @@ export default function UsersManagementPage() {
         setForm((f) => ({ ...f, selectedBranchIds: [branchList[0].id] }));
       }
 
-      // 2. Fetch staff users with emails via server action
+      // 2. Fetch staff users with details via server action
       const res = await getStaffUsersWithDetails();
       if (res.error) throw new Error(res.error);
       setUsers(res.users || []);
@@ -118,7 +119,14 @@ export default function UsersManagementPage() {
     }
 
     setIsSubmitting(true);
-    const result = await createStaffUser(form.email, form.password, form.role, form.selectedBranchIds);
+    const result = await createStaffUser(
+      form.email,
+      form.password,
+      form.role,
+      form.selectedBranchIds,
+      form.displayName,
+      form.phone
+    );
     setIsSubmitting(false);
 
     if (result.error) {
@@ -127,6 +135,8 @@ export default function UsersManagementPage() {
       toast.success('Staff user created successfully');
       setAddModalOpen(false);
       setForm({
+        displayName: '',
+        phone: '',
         email: '',
         password: '',
         role: 'waiter',
@@ -256,6 +266,8 @@ export default function UsersManagementPage() {
     if (!q) return true;
     return (
       u.email.toLowerCase().includes(q) ||
+      (u.display_name && u.display_name.toLowerCase().includes(q)) ||
+      (u.phone && u.phone.toLowerCase().includes(q)) ||
       u.role.toLowerCase().includes(q) ||
       u.branches.some((b) => b.name.toLowerCase().includes(q) || b.code.toLowerCase().includes(q))
     );
@@ -279,7 +291,7 @@ export default function UsersManagementPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-text-primary">Staff Management</h1>
           <p className="text-xs text-text-muted mt-0.5">
-            Manage employee access, roles, branches, status, and manual password resets
+            Manage employee accounts, phone numbers, roles, branches, status, and manual password resets
           </p>
         </div>
 
@@ -308,7 +320,7 @@ export default function UsersManagementPage() {
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
         <input
           type="text"
-          placeholder="Search staff by email, role, or branch..."
+          placeholder="Search staff by name, phone, email, role, or branch..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full pl-10 pr-4 py-2.5 rounded-xl text-xs bg-bg-secondary border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary/50 transition-colors"
@@ -321,7 +333,8 @@ export default function UsersManagementPage() {
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-border bg-white/[0.02] text-text-muted uppercase font-bold tracking-wider text-[10px]">
-                <th className="py-3.5 px-4">Staff Member / Email</th>
+                <th className="py-3.5 px-4">Staff Name &amp; Email</th>
+                <th className="py-3.5 px-4">Phone Number</th>
                 <th className="py-3.5 px-4">Role</th>
                 <th className="py-3.5 px-4">Assigned Branches</th>
                 <th className="py-3.5 px-4">Status</th>
@@ -332,7 +345,7 @@ export default function UsersManagementPage() {
             <tbody className="divide-y divide-border">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-text-muted">
+                  <td colSpan={7} className="py-12 text-center text-text-muted">
                     <User className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     <p className="font-semibold text-sm">No staff users found</p>
                   </td>
@@ -347,15 +360,24 @@ export default function UsersManagementPage() {
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-xl bg-accent-primary/15 text-accent-primary flex items-center justify-center font-bold text-xs shrink-0">
-                            {user.email.charAt(0).toUpperCase()}
+                            {(user.display_name || user.email).charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-bold text-text-primary truncate">{user.email}</p>
-                            <span className="font-mono text-[10px] text-text-muted">
-                              ID: {user.user_id.substring(0, 8)}...
-                            </span>
+                            <p className="font-bold text-text-primary truncate">{user.display_name || 'Staff Member'}</p>
+                            <span className="font-mono text-[10px] text-text-muted">{user.email}</span>
                           </div>
                         </div>
+                      </td>
+
+                      {/* Phone */}
+                      <td className="py-3.5 px-4">
+                        {user.phone ? (
+                          <span className="font-mono text-xs text-accent-primary bg-accent-primary/10 px-2 py-0.5 rounded border border-accent-primary/20">
+                            {user.phone}
+                          </span>
+                        ) : (
+                          <span className="text-text-muted italic text-[11px]">Not set</span>
+                        )}
                       </td>
 
                       {/* Role */}
@@ -599,8 +621,27 @@ export default function UsersManagementPage() {
       {/* ADD STAFF MEMBER MODAL */}
       <Modal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} title="Add Staff Member" size="md">
         <form onSubmit={handleCreate} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Staff Display Name"
+              type="text"
+              placeholder="e.g. John Doe"
+              value={form.displayName}
+              onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+              icon={<User className="w-4 h-4" />}
+            />
+            <Input
+              label="Unique Phone Number"
+              type="text"
+              placeholder="e.g. +94771234567"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              icon={<Phone className="w-4 h-4" />}
+            />
+          </div>
+
           <Input
-            label="Email Address"
+            label="Email Address (Required for system auth)"
             type="email"
             placeholder="staff@restaurant.com"
             value={form.email}

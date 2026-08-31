@@ -3,17 +3,20 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { RESTAURANT_NAME } from '@/lib/constants';
+import { useSystemSettings } from '@/context/SystemSettingsContext';
+import { getEmailByPhone } from '@/app/actions/auth';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { UtensilsCrossed, Mail, Lock, AlertTriangle } from 'lucide-react';
+import { UtensilsCrossed, Mail, Lock, AlertTriangle, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
   const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState('');
+  const { settings } = useSystemSettings();
+
+  const [identifier, setIdentifier] = useState(''); // Email or Phone
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -34,17 +37,37 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMessage(null);
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const input = identifier.trim();
+    if (!input) {
+      toast.error('Please enter your email or phone number');
+      setLoading(false);
+      return;
+    }
+
+    let targetEmail = input;
+
+    // Auto-detect: if input does not contain @, treat as phone number
+    if (!input.includes('@')) {
+      const phoneRes = await getEmailByPhone(input);
+      if (phoneRes.error || !phoneRes.email) {
+        toast.error(phoneRes.error || 'No account found for this phone number.');
+        setErrorMessage(phoneRes.error || 'No account found for this phone number.');
+        setLoading(false);
+        return;
+      }
+      targetEmail = phoneRes.email;
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email: targetEmail, password });
 
     if (error) {
       toast.error(error.message);
+      setErrorMessage(error.message);
       setLoading(false);
       return;
     }
 
     // Check the user's role to determine redirect
-    console.log('Attempting to fetch role for user ID:', data.user.id);
-    
     const { data: userRole, error: roleError } = await supabase
       .from('user_roles')
       .select('role')
@@ -59,14 +82,11 @@ export default function LoginPage() {
     }
 
     if (!userRole) {
-      console.warn('No role record found for user:', data.user.id);
       setErrorMessage('No role assigned to your account. Contact the admin.');
       await supabase.auth.signOut();
       setLoading(false);
       return;
     }
-
-    console.log('Role found:', userRole.role);
 
     // Check user's assigned branches
     const { data: userBranches } = await supabase
@@ -109,11 +129,7 @@ export default function LoginPage() {
     setLoading(false);
   }
 
-  async function handleSignOut() {
-    await supabase.auth.signOut();
-    toast.success('Signed out');
-    setErrorMessage(null);
-  }
+  const restaurantName = settings?.restaurant_name || 'Savoria';
 
   return (
     <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4">
@@ -127,11 +143,19 @@ export default function LoginPage() {
         <div className="glass rounded-3xl p-8 space-y-6">
           {/* Logo */}
           <div className="text-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center mx-auto shadow-lg shadow-accent-primary/25">
-              <UtensilsCrossed className="w-7 h-7 text-white" />
-            </div>
+            {settings?.logo_url ? (
+              <img
+                src={settings.logo_url}
+                alt={restaurantName}
+                className="w-16 h-16 rounded-2xl object-cover mx-auto border border-white/10 shadow-lg shadow-accent-primary/20"
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center mx-auto shadow-lg shadow-accent-primary/25">
+                <UtensilsCrossed className="w-7 h-7 text-white" />
+              </div>
+            )}
             <div>
-              <h1 className="text-xl font-bold gradient-text">{RESTAURANT_NAME}</h1>
+              <h1 className="text-xl font-bold gradient-text">{restaurantName}</h1>
               <p className="text-xs text-text-muted mt-1">Staff Login</p>
             </div>
           </div>
@@ -147,12 +171,12 @@ export default function LoginPage() {
           {/* Form */}
           <form onSubmit={handleLogin} className="space-y-4">
             <Input
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="staff@restaurant.com"
-              icon={<Mail className="w-4 h-4" />}
+              label="Email or Phone Number"
+              type="text"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="staff@restaurant.com or +94771234567"
+              icon={identifier.includes('@') ? <Mail className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
               required
             />
             <Input
@@ -195,7 +219,7 @@ export default function LoginPage() {
           </div>
 
           <p className="text-[10px] text-center text-text-muted">
-            Powered by {RESTAURANT_NAME} Management System
+            Powered by {restaurantName} Management System
           </p>
         </div>
       </div>

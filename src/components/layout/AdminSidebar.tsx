@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
-import { RESTAURANT_NAME } from '@/lib/constants';
-import { UserRoleType } from '@/types/database';
+import { useSystemSettings } from '@/context/SystemSettingsContext';
+import { UserRoleType, SidebarMenuItem } from '@/types/database';
 import {
   LayoutDashboard,
   ChefHat,
@@ -23,32 +23,60 @@ import {
   Tv,
   Building2,
   CalendarDays,
+  Settings,
+  UserCircle,
+  type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useBranch } from '@/context/BranchContext';
 
-const navItems = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/pos', label: 'POS', icon: ShoppingCart },
-  { href: '/kitchen', label: 'Kitchen', icon: ChefHat },
-  { href: '/display', label: 'Order Display', icon: Tv },
-  { href: '/admin/day-end', label: 'Day-End Shift', icon: CalendarDays },
-  { href: '/admin/tables', label: 'Tables & QR', icon: QrCode },
-  { href: '/admin/billing', label: 'Billing', icon: Receipt },
-  { href: '/admin/reports', label: 'Reports', icon: BarChart3 },
-  { href: '/admin/menu-management', label: 'Menu Items', icon: UtensilsCrossed },
-  { href: '/admin/branches', label: 'Branches & Terminals', icon: Building2 },
-  { href: '/admin/users', label: 'Staff Management', icon: User },
+// Map icon_name strings from the database to Lucide icon components
+const ICON_MAP: Record<string, LucideIcon> = {
+  LayoutDashboard,
+  ChefHat,
+  UtensilsCrossed,
+  QrCode,
+  Receipt,
+  Menu,
+  User,
+  Shield,
+  BarChart3,
+  ShoppingCart,
+  Tv,
+  Building2,
+  CalendarDays,
+  Settings,
+};
+
+// Fallback hardcoded items (used if DB fetch fails)
+const FALLBACK_NAV_ITEMS = [
+  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, key: 'dashboard' },
+  { href: '/pos', label: 'POS', icon: ShoppingCart, key: 'pos' },
+  { href: '/kitchen', label: 'Kitchen', icon: ChefHat, key: 'kitchen' },
+  { href: '/display', label: 'Order Display', icon: Tv, key: 'order_display' },
+  { href: '/admin/day-end', label: 'Day-End Shift', icon: CalendarDays, key: 'day_end' },
+  { href: '/admin/tables', label: 'Tables & QR', icon: QrCode, key: 'tables_qr' },
+  { href: '/admin/billing', label: 'Billing', icon: Receipt, key: 'billing' },
+  { href: '/admin/reports', label: 'Reports', icon: BarChart3, key: 'reports' },
+  { href: '/admin/menu-management', label: 'Menu Items', icon: UtensilsCrossed, key: 'menu_items' },
+  { href: '/admin/branches', label: 'Branches & Terminals', icon: Building2, key: 'branches' },
+  { href: '/admin/users', label: 'Staff Management', icon: User, key: 'staff' },
+  { href: '/admin/settings', label: 'System Settings', icon: Settings, key: 'settings' },
 ];
 
 export default function AdminSidebar({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-  const { currentBranch, userBranches, switchBranch } = useBranch();
+  const { currentBranch, userBranches, switchBranch, userProfile } = useBranch();
+  const { settings } = useSystemSettings();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<UserRoleType | null>(null);
+
+  // Dynamic nav items from DB
+  const [navItems, setNavItems] = useState<{ href: string; label: string; icon: LucideIcon; key: string }[]>([]);
+  const [navLoading, setNavLoading] = useState(true);
 
   useEffect(() => {
     loadUser();
@@ -63,8 +91,68 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
         .select('role')
         .eq('user_id', user.id)
         .single();
-      setUserRole(roleData?.role || null);
+      const role = roleData?.role || null;
+      setUserRole(role);
+
+      // Fetch dynamic sidebar items for this user's role
+      await loadSidebarItems(role);
+    } else {
+      setNavItems(FALLBACK_NAV_ITEMS);
+      setNavLoading(false);
     }
+  }
+
+  async function loadSidebarItems(role: UserRoleType | null) {
+    try {
+      // 1. Fetch all active menu items
+      const { data: menuItems, error: menuError } = await supabase
+        .from('sidebar_menu_items')
+        .select('*')
+        .eq('is_active', true)
+        .order('display_order', { ascending: true });
+
+      if (menuError || !menuItems || menuItems.length === 0) {
+        // Fallback to hardcoded
+        setNavItems(FALLBACK_NAV_ITEMS);
+        setNavLoading(false);
+        return;
+      }
+
+      // 2. Fetch permissions for this role
+      if (role === 'admin' || role === 'super_admin') {
+        // Admins see everything
+        const items = menuItems.map((item: SidebarMenuItem) => ({
+          href: item.href,
+          label: item.label,
+          icon: ICON_MAP[item.icon_name] || LayoutDashboard,
+          key: item.key,
+        }));
+        setNavItems(items);
+      } else if (role) {
+        const { data: permissions } = await supabase
+          .from('role_menu_permissions')
+          .select('menu_item_id')
+          .eq('role', role);
+
+        const allowedIds = new Set((permissions || []).map((p: any) => p.menu_item_id));
+
+        const items = menuItems
+          .filter((item: SidebarMenuItem) => allowedIds.has(item.id))
+          .map((item: SidebarMenuItem) => ({
+            href: item.href,
+            label: item.label,
+            icon: ICON_MAP[item.icon_name] || LayoutDashboard,
+            key: item.key,
+          }));
+        setNavItems(items);
+      } else {
+        setNavItems([]);
+      }
+    } catch (err) {
+      console.error('Error loading sidebar items:', err);
+      setNavItems(FALLBACK_NAV_ITEMS);
+    }
+    setNavLoading(false);
   }
 
   async function handleSignOut() {
@@ -72,6 +160,9 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
     toast.success('Signed out successfully');
     router.push('/login');
   }
+
+  const restaurantName = settings?.restaurant_name || 'Savoria';
+  const displayName = userProfile?.display_name || userEmail || 'User';
 
   return (
     <div className="flex h-screen bg-bg-primary">
@@ -89,11 +180,19 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
         <div className="p-4 border-b border-border space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center">
-                <UtensilsCrossed className="w-5 h-5 text-white" />
-              </div>
+              {settings?.logo_url ? (
+                <img
+                  src={settings.logo_url}
+                  alt={restaurantName}
+                  className="w-9 h-9 rounded-xl object-cover border border-white/10"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center">
+                  <UtensilsCrossed className="w-5 h-5 text-white" />
+                </div>
+              )}
               <div>
-                <h1 className="text-base font-bold gradient-text">{RESTAURANT_NAME}</h1>
+                <h1 className="text-base font-bold gradient-text">{restaurantName}</h1>
                 <p className="text-[10px] text-text-muted">Enterprise POS</p>
               </div>
             </div>
@@ -137,20 +236,17 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
 
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {navItems
-            .filter((item) => {
-              if (userRole === 'admin' || userRole === 'super_admin') return true;
-              if (userRole === 'pos') return item.href === '/pos' || item.href === '/display';
-              if (userRole === 'waiter') return item.href === '/admin/tables' || item.href === '/kitchen';
-              if (userRole === 'kitchen') return item.href === '/kitchen';
-              return false;
-            })
-            .map((item) => {
+          {navLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-5 h-5 border-2 border-accent-primary/30 border-t-accent-primary rounded-full animate-spin" />
+            </div>
+          ) : (
+            navItems.map((item) => {
               const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href));
               const Icon = item.icon;
               return (
                 <Link
-                  key={item.href}
+                  key={item.key}
                   href={item.href}
                   onClick={() => setSidebarOpen(false)}
                   className={cn(
@@ -164,19 +260,27 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
                   {item.label}
                 </Link>
               );
-            })}
+            })
+          )}
         </nav>
 
         {/* User Info + Sign Out */}
         <div className="p-3 border-t border-border space-y-2">
-          {/* User card */}
+          {/* User card with profile link */}
           {userEmail && (
-            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03]">
+            <Link
+              href="/admin/profile"
+              onClick={() => setSidebarOpen(false)}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] transition-all cursor-pointer group',
+                pathname === '/admin/profile' && 'bg-accent-primary/10 border border-accent-primary/20'
+              )}
+            >
               <div className="w-8 h-8 rounded-lg bg-accent-primary/15 flex items-center justify-center shrink-0">
-                <User className="w-4 h-4 text-accent-primary" />
+                <UserCircle className="w-4 h-4 text-accent-primary" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-text-primary truncate">{userEmail}</p>
+                <p className="text-xs font-medium text-text-primary truncate">{displayName}</p>
                 <div className="flex items-center gap-1 mt-0.5">
                   <Shield className="w-3 h-3 text-text-muted" />
                   <span className={cn(
@@ -193,7 +297,8 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
                   </span>
                 </div>
               </div>
-            </div>
+              <UserCircle className="w-3.5 h-3.5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+            </Link>
           )}
 
           {/* Sign out */}
@@ -214,7 +319,7 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-xl hover:bg-white/5 text-text-secondary cursor-pointer">
             <Menu className="w-5 h-5" />
           </button>
-          <span className="text-sm font-semibold gradient-text">{RESTAURANT_NAME}</span>
+          <span className="text-sm font-semibold gradient-text">{restaurantName}</span>
           <div className="w-9" />
         </header>
 

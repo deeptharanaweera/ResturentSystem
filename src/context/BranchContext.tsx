@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Branch, Terminal, UserRoleType } from '@/types/database';
+import { Branch, Terminal, UserRoleType, UserProfile } from '@/types/database';
 import { toast } from 'sonner';
 
 interface BranchContextType {
@@ -12,6 +12,7 @@ interface BranchContextType {
   terminals: Terminal[];
   loading: boolean;
   userRole: UserRoleType | null;
+  userProfile: UserProfile | null;
   switchBranch: (branch: Branch) => Promise<void>;
   switchTerminal: (terminal: Terminal) => void;
   refreshBranches: () => Promise<void>;
@@ -24,6 +25,7 @@ const BranchContext = createContext<BranchContextType>({
   terminals: [],
   loading: true,
   userRole: null,
+  userProfile: null,
   switchBranch: async () => {},
   switchTerminal: () => {},
   refreshBranches: async () => {},
@@ -37,6 +39,7 @@ export function BranchProvider({ children }: { children: React.ReactNode }) {
   const [terminals, setTerminals] = useState<Terminal[]>([]);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<UserRoleType | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   const fetchTerminalsForBranch = useCallback(async (branchId: string) => {
     try {
@@ -110,6 +113,15 @@ export function BranchProvider({ children }: { children: React.ReactNode }) {
 
       const role = (roleData?.role as UserRoleType) || null;
       setUserRole(role);
+
+      // Fetch user profile
+      const { data: profileData } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      setUserProfile(profileData || null);
 
       let branchesList: Branch[] = [];
 
@@ -196,6 +208,7 @@ export function BranchProvider({ children }: { children: React.ReactNode }) {
         terminals,
         loading,
         userRole,
+        userProfile,
         switchBranch,
         switchTerminal,
         refreshBranches,

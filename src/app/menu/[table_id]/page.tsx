@@ -151,6 +151,7 @@ export default function MenuPage({ params }: PageProps) {
         .from('orders')
         .insert({
           table_id: table_id,
+          branch_id: table?.branch_id || null,
           total_amount: cartTotal,
           status: 'pending',
           payment_status: 'unpaid',
