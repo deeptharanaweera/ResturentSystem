@@ -12,7 +12,7 @@ const variantStyles: Record<string, string> = {
   pending: 'bg-amber-500/15 text-amber-400 border-amber-500/25',
   preparing: 'bg-blue-500/15 text-blue-400 border-blue-500/25',
   served: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
-  completed: 'bg-slate-500/15 text-slate-300 border-slate-500/25',
+  completed: 'bg-teal-500/15 text-teal-400 border-teal-500/25',
   cancelled: 'bg-red-500/15 text-red-400 border-red-500/25',
 };
 

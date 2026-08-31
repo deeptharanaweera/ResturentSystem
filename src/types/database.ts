@@ -160,3 +160,43 @@ export interface CartItem {
   quantity: number;
   specialInstructions?: string;
 }
+
+export interface SystemSettings {
+  id: string;
+  restaurant_name: string;
+  tagline: string | null;
+  address: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  logo_url: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+export interface UserProfile {
+  id: string;
+  user_id: string;
+  display_name: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SidebarMenuItem {
+  id: string;
+  key: string;
+  label: string;
+  href: string;
+  icon_name: string;
+  display_order: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface RoleMenuPermission {
+  id: string;
+  role: string;
+  menu_item_id: string;
+  created_at: string;
+}

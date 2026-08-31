@@ -4,8 +4,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Only protect /admin/* and /kitchen/* routes
-  const isProtectedRoute = pathname.startsWith('/admin') || pathname.startsWith('/kitchen');
+  // Protect /admin/* and /kitchen/* routes
+  const isProtectedRoute = pathname.startsWith('/admin') || pathname.startsWith('/kitchen') || pathname.startsWith('/pos');
 
   if (!isProtectedRoute) {
     return NextResponse.next();
@@ -62,31 +62,59 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Super Admin & Admin have access to everything
   const isAdmin = role === 'admin' || role === 'super_admin';
-
-  // Admin routes require 'admin' or 'super_admin' role, except for tables/orders which waiters can access
-  if (pathname.startsWith('/admin')) {
-    const isWaiterAllowedPath = pathname.startsWith('/admin/tables') || pathname.startsWith('/admin/orders');
-    if (!isAdmin && !(role === 'waiter' && isWaiterAllowedPath)) {
-      const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('error', 'unauthorized');
-      return NextResponse.redirect(loginUrl);
-    }
+  if (isAdmin) {
+    return supabaseResponse;
   }
 
-  // Kitchen routes require 'admin', 'super_admin', or 'kitchen' role
-  if (pathname.startsWith('/kitchen') && !isAdmin && role !== 'kitchen' && role !== 'waiter') {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('error', 'unauthorized');
-    return NextResponse.redirect(loginUrl);
+  // Paths accessible to ALL authenticated users with any valid role
+  const isAllRolePath =
+    pathname === '/admin' ||
+    pathname === '/admin/' ||
+    pathname === '/admin/profile' ||
+    pathname.startsWith('/admin/profile/');
+
+  if (isAllRolePath) {
+    return supabaseResponse;
   }
 
-  return supabaseResponse;
+  // Default baseline permissions per role
+  let isDefaultAllowed = false;
+  if (role === 'pos' && (pathname === '/pos' || pathname.startsWith('/pos/'))) {
+    isDefaultAllowed = true;
+  } else if (role === 'kitchen' && (pathname === '/kitchen' || pathname.startsWith('/kitchen/'))) {
+    isDefaultAllowed = true;
+  } else if (role === 'waiter' && (pathname.startsWith('/admin/tables') || pathname.startsWith('/admin/orders') || pathname.startsWith('/kitchen'))) {
+    isDefaultAllowed = true;
+  }
+
+  if (isDefaultAllowed) {
+    return supabaseResponse;
+  }
+
+  // Dynamic permission check: verify if this role was granted access to pathname in role_menu_permissions table
+  const { data: perm } = await supabase
+    .from('role_menu_permissions')
+    .select('id, sidebar_menu_items!inner(href)')
+    .eq('role', role)
+    .eq('sidebar_menu_items.href', pathname)
+    .maybeSingle();
+
+  if (perm) {
+    return supabaseResponse;
+  }
+
+  // Deny access if no permission found
+  const loginUrl = new URL('/login', request.url);
+  loginUrl.searchParams.set('error', 'unauthorized');
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {
   matcher: [
     '/admin/:path*',
     '/kitchen/:path*',
+    '/pos/:path*',
   ],
 };

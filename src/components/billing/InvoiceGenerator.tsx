@@ -29,18 +29,48 @@ export interface InvoiceData {
   payments?: InvoicePaymentInfo[];
   issuedAt: string;
   mode?: 'download' | 'print';
+  systemSettings?: {
+    restaurant_name?: string;
+    tagline?: string | null;
+    address?: string | null;
+    contact_phone?: string | null;
+    contact_email?: string | null;
+    logo_url?: string | null;
+  };
 }
 
 export async function generateInvoicePDF(data: InvoiceData) {
   const { jsPDF } = await import('jspdf');
   const { default: autoTable } = await import('jspdf-autotable');
 
+  // Fetch dynamic system settings from DB if not passed directly
+  let settings = data.systemSettings;
+  if (!settings) {
+    try {
+      const { createClient } = await import('@/lib/supabase/client');
+      const supabase = createClient();
+      const { data: dbSettings } = await supabase.from('system_settings').select('*').limit(1).maybeSingle();
+      if (dbSettings) {
+        settings = dbSettings;
+      }
+    } catch (e) {
+      console.warn('Could not fetch system settings for invoice:', e);
+    }
+  }
+
+  const name = settings?.restaurant_name || RESTAURANT_NAME;
+  const tagline = settings?.tagline || RESTAURANT_TAGLINE;
+  const address = settings?.address || null;
+  const phone = settings?.contact_phone || null;
+  const email = settings?.contact_email || null;
+  const logoUrl = settings?.logo_url || null;
+
   // Dynamic height calculation
-  const baseHeight = 90;
+  const baseHeight = 110;
   const itemsHeight = data.items.length * 6.5;
   const paymentsHeight = (data.payments?.length || 0) * 5;
   const orderNumsHeight = Math.ceil(data.orderNumbers.length / 2) * 4.5;
-  const totalHeight = Math.max(140, baseHeight + itemsHeight + paymentsHeight + orderNumsHeight);
+  const totalHeight = Math.max(150, baseHeight + itemsHeight + paymentsHeight + orderNumsHeight);
 
   // Standard POS 80mm roll width
   const doc = new jsPDF({
@@ -55,17 +85,48 @@ export async function generateInvoicePDF(data: InvoiceData) {
   let y = 8;
 
   // --- 1. RESTAURANT HEADER ---
+  if (logoUrl) {
+    try {
+      // 12mm x 12mm centered logo
+      doc.addImage(logoUrl, 'PNG', (pageWidth - 12) / 2, y, 12, 12);
+      y += 14;
+    } catch (err) {
+      // Ignore logo error if invalid format
+    }
+  }
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   doc.setTextColor(15, 23, 42); // slate-900
-  doc.text(RESTAURANT_NAME.toUpperCase(), pageWidth / 2, y, { align: 'center' });
+  doc.text(name.toUpperCase(), pageWidth / 2, y, { align: 'center' });
   y += 4.5;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(71, 85, 105); // slate-600
-  doc.text(RESTAURANT_TAGLINE, pageWidth / 2, y, { align: 'center' });
-  y += 5;
+  if (tagline) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(71, 85, 105); // slate-600
+    doc.text(tagline, pageWidth / 2, y, { align: 'center' });
+    y += 4;
+  }
+
+  if (address) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(address, pageWidth / 2, y, { align: 'center', maxWidth: contentWidth });
+    y += 3.8;
+  }
+
+  if (phone || email) {
+    const contactStr = [phone && `Tel: ${phone}`, email && `Email: ${email}`].filter(Boolean).join(' | ');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(contactStr, pageWidth / 2, y, { align: 'center', maxWidth: contentWidth });
+    y += 3.8;
+  }
+
+  y += 1;
 
   // Tax Invoice Badge
   doc.setFont('helvetica', 'bold');
@@ -256,7 +317,7 @@ export async function generateInvoicePDF(data: InvoiceData) {
   doc.setTextColor(100, 116, 139);
   doc.text('Please retain this receipt for your reference', pageWidth / 2, currentY, { align: 'center' });
   currentY += 3;
-  doc.text(`Powered by ${RESTAURANT_NAME} POS`, pageWidth / 2, currentY, { align: 'center' });
+  doc.text(`Powered by ${name} POS`, pageWidth / 2, currentY, { align: 'center' });
 
   // Output
   if (data.mode === 'print') {

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { OrderWithItems } from '@/types/database';
 import KitchenCard from '@/components/orders/KitchenCard';
-import { ChefHat, Clock, CheckCircle, Loader2, RefreshCw, LogOut, User, Shield, Maximize2, Minimize2, Building2 } from 'lucide-react';
+import { ChefHat, Clock, CheckCircle, Loader2, RefreshCw, LogOut, User, Shield, Maximize2, Minimize2, Building2, Volume2, VolumeX } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -20,6 +20,54 @@ export default function KitchenPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  // Play audio chime when kitchen marks an order as complete
+  function playCompleteChime() {
+    if (!soundEnabled) return;
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const now = audioCtx.currentTime;
+
+      // Note 1 (E5: 659.25 Hz)
+      const osc1 = audioCtx.createOscillator();
+      const gain1 = audioCtx.createGain();
+      osc1.type = 'triangle';
+      osc1.frequency.setValueAtTime(659.25, now);
+      gain1.gain.setValueAtTime(0.35, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+      osc1.connect(gain1);
+      gain1.connect(audioCtx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.4);
+
+      // Note 2 (A5: 880.00 Hz)
+      const osc2 = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(880.00, now + 0.12);
+      gain2.gain.setValueAtTime(0.4, now + 0.12);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      osc2.connect(gain2);
+      gain2.connect(audioCtx.destination);
+      osc2.start(now + 0.12);
+      osc2.stop(now + 0.6);
+
+      // Note 3 (C#6: 1108.73 Hz - bright completion tone)
+      const osc3 = audioCtx.createOscillator();
+      const gain3 = audioCtx.createGain();
+      osc3.type = 'sine';
+      osc3.frequency.setValueAtTime(1108.73, now + 0.24);
+      gain3.gain.setValueAtTime(0.45, now + 0.24);
+      gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+      osc3.connect(gain3);
+      gain3.connect(audioCtx.destination);
+      osc3.start(now + 0.24);
+      osc3.stop(now + 0.9);
+    } catch {
+      // Audio context might be restricted before user gesture
+    }
+  }
 
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
@@ -101,10 +149,10 @@ export default function KitchenPage() {
           menu_item:menu_items(*)
         )
       `)
-      .in('status', ['pending', 'preparing', 'served']);
+      .in('status', ['pending', 'preparing', 'completed']);
 
     if (currentBranch) {
-      query = query.eq('branch_id', currentBranch.id);
+      query = query.or(`branch_id.eq.${currentBranch.id},branch_id.is.null`);
     }
 
     const { data, error } = await query.order('created_at', { ascending: true });
@@ -124,14 +172,23 @@ export default function KitchenPage() {
     if (error) {
       toast.error('Failed to update order status');
     } else {
-      toast.success(`Order ${newStatus === 'preparing' ? 'started' : 'marked as served'}`);
+      if (newStatus === 'preparing') {
+        toast.success('Order preparation started');
+      } else if (newStatus === 'completed') {
+        playCompleteChime();
+        toast.success('Order marked as complete');
+      } else if (newStatus === 'served') {
+        toast.success('Order marked as served');
+      } else {
+        toast.success(`Order status updated to ${newStatus}`);
+      }
       fetchOrders();
     }
   }
 
   const pendingOrders = orders.filter((o) => o.status === 'pending');
   const preparingOrders = orders.filter((o) => o.status === 'preparing');
-  const servedOrders = orders.filter((o) => o.status === 'served');
+  const completedOrders = orders.filter((o) => o.status === 'completed');
 
   if (loading) {
     return (
@@ -206,6 +263,23 @@ export default function KitchenPage() {
                 </div>
               </div>
             )}
+
+            {/* Sound Toggle */}
+            <button
+              onClick={() => {
+                const next = !soundEnabled;
+                setSoundEnabled(next);
+                if (next) playCompleteChime();
+                toast.info(`Sound ${next ? 'enabled' : 'muted'}`);
+              }}
+              className={cn(
+                'p-2.5 rounded-xl glass glass-hover transition-all cursor-pointer',
+                soundEnabled ? 'text-teal-400 hover:text-teal-300' : 'text-text-muted hover:text-text-primary'
+              )}
+              title={soundEnabled ? 'Mute Completion Sound' : 'Enable Completion Sound'}
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
 
             {/* Fullscreen */}
             <button
@@ -284,22 +358,22 @@ export default function KitchenPage() {
             </div>
           </div>
 
-          {/* Served Column */}
+          {/* Completed Column */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 px-1">
-              <CheckCircle className="w-4 h-4 text-emerald-400" />
-              <h2 className="text-sm font-semibold text-text-primary">Served</h2>
-              <span className="ml-auto text-xs text-text-muted bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                {servedOrders.length}
+              <CheckCircle className="w-4 h-4 text-teal-400" />
+              <h2 className="text-sm font-semibold text-text-primary">Completed</h2>
+              <span className="ml-auto text-xs text-text-muted bg-teal-500/10 px-2 py-0.5 rounded-full">
+                {completedOrders.length}
               </span>
             </div>
             <div className="space-y-3">
-              {servedOrders.length === 0 ? (
+              {completedOrders.length === 0 ? (
                 <div className="glass rounded-2xl p-6 text-center">
-                  <p className="text-xs text-text-muted">No served orders</p>
+                  <p className="text-xs text-text-muted">No completed orders</p>
                 </div>
               ) : (
-                servedOrders.map((order) => (
+                completedOrders.map((order) => (
                   <KitchenCard key={order.id} order={order} onStatusChange={handleStatusChange} />
                 ))
               )}

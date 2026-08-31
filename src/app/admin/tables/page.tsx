@@ -9,7 +9,7 @@ import Input from '@/components/ui/Input';
 import QRCodeDisplay from '@/components/tables/QRCodeDisplay';
 import Modal from '@/components/ui/Modal';
 import Badge from '@/components/ui/Badge';
-import { QrCode, Plus, Power, PowerOff, Trash2, Eye, ShoppingCart, Loader2, Clock, ChefHat } from 'lucide-react';
+import { QrCode, Plus, Power, PowerOff, Trash2, Eye, ShoppingCart, Loader2, Clock, ChefHat, CheckCircle, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn, formatCurrency } from '@/lib/utils';
 import Link from 'next/link';
@@ -17,7 +17,7 @@ import { useBranch } from '@/context/BranchContext';
 
 interface TableWithStatus extends RestaurantTable {
   active_orders_count: number;
-  status: 'empty' | 'pending' | 'preparing' | 'served';
+  status: 'empty' | 'pending' | 'preparing' | 'completed' | 'served';
 }
 
 export default function TablesPage() {
@@ -36,7 +36,7 @@ export default function TablesPage() {
   useEffect(() => {
     loadUser();
     fetchTables();
-    
+
     // Subscribe to orders to update table status in real-time
     const channel = supabase
       .channel('table-status')
@@ -76,22 +76,24 @@ export default function TablesPage() {
 
     if (!tablesData) return;
 
-    // Fetch active orders to calculate status
+    // Fetch active orders to calculate status (only un-invoiced orders keep table occupied)
     const { data: ordersData } = await supabase
       .from('orders')
-      .select('id, table_id, status')
-      .in('status', ['pending', 'preparing', 'served']);
+      .select('id, table_id, status, invoice_id')
+      .in('status', ['pending', 'preparing', 'completed', 'served'])
+      .is('invoice_id', null);
 
     const tableWithStatus = (tablesData as RestaurantTable[]).map(t => {
       const orders = ordersData?.filter(o => o.table_id === t.id) || [];
       const hasPreparing = orders.some(o => o.status === 'preparing');
       const hasPending = orders.some(o => o.status === 'pending');
+      const hasCompleted = orders.some(o => o.status === 'completed');
       const hasServed = orders.some(o => o.status === 'served');
-      
+
       return {
         ...t,
         active_orders_count: orders.length,
-        status: hasPreparing ? 'preparing' : hasPending ? 'pending' : hasServed ? 'served' : 'empty'
+        status: hasPreparing ? 'preparing' : hasPending ? 'pending' : hasCompleted ? 'completed' : hasServed ? 'served' : 'empty'
       } as TableWithStatus;
     });
 
@@ -112,11 +114,49 @@ export default function TablesPage() {
         )
       `)
       .eq('table_id', tableId)
-      .in('status', ['pending', 'preparing', 'served'])
+      .is('invoice_id', null)
+      .in('status', ['pending', 'preparing', 'completed', 'served'])
       .order('created_at', { ascending: false });
 
     setTableOrders(data as unknown as OrderWithItems[] || []);
     setOrdersLoading(false);
+  }
+
+  async function handleMarkAsServed(orderId: string) {
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: 'served' })
+      .eq('id', orderId);
+
+    if (error) {
+      toast.error('Failed to mark order as served');
+    } else {
+      toast.success('Order marked as served');
+      if (viewOrdersModal) {
+        fetchTableOrders(viewOrdersModal.id);
+      }
+      fetchTables();
+    }
+  }
+
+  async function handleMarkAllAsServed() {
+    const completedIds = tableOrders.filter(o => o.status === 'completed').map(o => o.id);
+    if (completedIds.length === 0) return;
+
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: 'served' })
+      .in('id', completedIds);
+
+    if (error) {
+      toast.error('Failed to mark orders as served');
+    } else {
+      toast.success('Completed orders marked as served');
+      if (viewOrdersModal) {
+        fetchTableOrders(viewOrdersModal.id);
+      }
+      fetchTables();
+    }
   }
 
   async function addTable() {
@@ -183,7 +223,7 @@ export default function TablesPage() {
           <h1 className="text-2xl font-bold text-text-primary">Table Management</h1>
           <p className="text-sm text-text-muted mt-1">View active orders and manage tables</p>
         </div>
-        
+
         {(userRole === 'admin' || userRole === 'super_admin') && (
           <div className="flex items-center gap-3">
             <Input
@@ -210,16 +250,18 @@ export default function TablesPage() {
               !table.is_active && 'opacity-40 grayscale',
               table.status === 'pending' && 'ring-2 ring-amber-500/50 bg-amber-500/5',
               table.status === 'preparing' && 'ring-2 ring-blue-500/50 bg-blue-500/5',
+              table.status === 'completed' && 'ring-2 ring-teal-500/50 bg-teal-500/5',
               table.status === 'served' && 'ring-2 ring-emerald-500/50 bg-emerald-500/5'
             )}
           >
             {/* Table Number Circle */}
             <div className={cn(
               'w-16 h-16 rounded-full flex flex-col items-center justify-center border-2 transition-colors',
-              table.status === 'empty' ? 'border-border text-text-muted' : 
-              table.status === 'pending' ? 'border-amber-500 text-amber-500 bg-amber-500/10' :
-              table.status === 'preparing' ? 'border-blue-500 text-blue-500 bg-blue-500/10' :
-              'border-emerald-500 text-emerald-500 bg-emerald-500/10'
+              table.status === 'empty' ? 'border-border text-text-muted' :
+                table.status === 'pending' ? 'border-amber-500 text-amber-500 bg-amber-500/10' :
+                  table.status === 'preparing' ? 'border-blue-500 text-blue-500 bg-blue-500/10' :
+                    table.status === 'completed' ? 'border-teal-500 text-teal-400 bg-teal-500/10' :
+                      'border-emerald-500 text-emerald-500 bg-emerald-500/10'
             )}>
               <span className="text-xs font-medium uppercase opacity-60">Table</span>
               <span className="text-2xl font-bold leading-none">{table.table_number}</span>
@@ -227,9 +269,10 @@ export default function TablesPage() {
 
             <div className="text-center space-y-1">
               <p className="text-xs font-semibold text-text-primary">
-                {table.status === 'empty' ? 'Vacant' : 
-                 table.status === 'pending' ? 'Pending Order' : 
-                 table.status === 'preparing' ? 'Preparing' : 'Served'}
+                {table.status === 'empty' ? 'Vacant' :
+                  table.status === 'pending' ? 'Pending Order' :
+                    table.status === 'preparing' ? 'Preparing' :
+                      table.status === 'completed' ? 'Food Ready' : 'Served'}
               </p>
               {table.active_orders_count > 0 && (
                 <p className="text-[10px] text-text-muted">{table.active_orders_count} active orders</p>
@@ -282,9 +325,9 @@ export default function TablesPage() {
       </div>
 
       {/* View Orders Modal */}
-      <Modal 
-        isOpen={!!viewOrdersModal} 
-        onClose={() => setViewOrdersModal(null)} 
+      <Modal
+        isOpen={!!viewOrdersModal}
+        onClose={() => setViewOrdersModal(null)}
         title={`Orders - Table ${viewOrdersModal?.table_number}`}
         size="lg"
       >
@@ -294,12 +337,26 @@ export default function TablesPage() {
           <div className="py-12 text-center text-text-muted text-sm">No active orders for this table</div>
         ) : (
           <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+            {tableOrders.some(o => o.status === 'completed') && (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-teal-500/10 border border-teal-500/20">
+                <span className="text-xs text-teal-400 font-medium">Table has completed food ready to serve</span>
+                <Button
+                  variant="success"
+                  size="sm"
+                  onClick={handleMarkAllAsServed}
+                  icon={<Check className="w-3.5 h-3.5" />}
+                >
+                  Mark All as Served
+                </Button>
+              </div>
+            )}
+
             {tableOrders.map(order => (
-              <Card key={order.id} padding="md" className="border-border/50">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={order.status === 'pending' ? 'pending' : order.status === 'preparing' ? 'preparing' : 'served'}>
-                      {order.status}
+              <Card key={order.id} padding="md" className="border-border/50 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant={order.status as any}>
+                      {order.status === 'completed' ? 'Food Ready (Completed)' : order.status}
                     </Badge>
                     <span className="text-xs text-text-muted">
                       Ordered {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -307,7 +364,7 @@ export default function TablesPage() {
                   </div>
                   <span className="text-sm font-bold gradient-text">{formatCurrency(order.total_amount)}</span>
                 </div>
-                
+
                 <div className="space-y-2">
                   {order.order_items.map(item => (
                     <div key={item.id} className="flex justify-between text-xs">
@@ -318,9 +375,22 @@ export default function TablesPage() {
                     </div>
                   ))}
                 </div>
+
+                {order.status === 'completed' && (
+                  <div className="pt-2 border-t border-border/50 flex justify-end">
+                    <Button
+                      variant="success"
+                      size="sm"
+                      onClick={() => handleMarkAsServed(order.id)}
+                      icon={<CheckCircle className="w-3.5 h-3.5" />}
+                    >
+                      Mark as Served
+                    </Button>
+                  </div>
+                )}
               </Card>
             ))}
-            
+
             <div className="pt-4 border-t border-border">
               <Link href={`/menu/${viewOrdersModal?.id}`}>
                 <Button variant="primary" className="w-full" icon={<ShoppingCart className="w-4 h-4" />}>

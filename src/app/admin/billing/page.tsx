@@ -39,7 +39,8 @@ export default function BillingPage() {
           order_items(*, menu_item:menu_items(*)),
           invoice:invoices!fk_orders_invoice(*)
         `)
-        .in('status', ['pending', 'preparing', 'served']);
+        .in('status', ['pending', 'preparing', 'completed', 'served'])
+        .is('invoice_id', null);
 
       if (currentBranch) {
         query = query.eq('branch_id', currentBranch.id);
@@ -113,7 +114,6 @@ export default function BillingPage() {
           await supabase
             .from('orders')
             .update({
-              status: 'completed',
               payment_status: 'paid',
               total_amount: total,
               invoice_id: invoice.id,

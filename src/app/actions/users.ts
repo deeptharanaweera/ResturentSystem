@@ -7,6 +7,8 @@ import { revalidatePath } from 'next/cache';
 export interface StaffUserRecord {
   user_id: string;
   email: string;
+  display_name: string | null;
+  phone: string | null;
   role: UserRoleType;
   is_active: boolean;
   created_at: string;
@@ -33,7 +35,12 @@ export async function getStaffUsersWithDetails(): Promise<{ users?: StaffUserRec
 
     if (rolesError) throw rolesError;
 
-    // 3. Fetch user branches
+    // 3. Fetch user profiles (names & phone numbers)
+    const { data: profilesData } = await supabase
+      .from('user_profiles')
+      .select('*');
+
+    // 4. Fetch user branches
     const { data: userBranchData } = await supabase
       .from('user_branches')
       .select('user_id, branch:branches(*)');
@@ -41,6 +48,11 @@ export async function getStaffUsersWithDetails(): Promise<{ users?: StaffUserRec
     const roleMap: Record<string, UserRoleType> = {};
     (rolesData || []).forEach((r) => {
       roleMap[r.user_id] = r.role;
+    });
+
+    const profileMap: Record<string, { display_name: string | null; phone: string | null }> = {};
+    (profilesData || []).forEach((p) => {
+      profileMap[p.user_id] = { display_name: p.display_name, phone: p.phone };
     });
 
     const branchMap: Record<string, Branch[]> = {};
@@ -55,10 +67,13 @@ export async function getStaffUsersWithDetails(): Promise<{ users?: StaffUserRec
       .map((u) => {
         const isBanned = Boolean(u.banned_until && new Date(u.banned_until) > new Date());
         const isActive = !isBanned && u.user_metadata?.is_active !== false;
+        const prof = profileMap[u.id];
 
         return {
           user_id: u.id,
           email: u.email || 'No email',
+          display_name: prof?.display_name || u.email?.split('@')[0] || 'Staff Member',
+          phone: prof?.phone || null,
           role: roleMap[u.id] || 'waiter',
           is_active: isActive,
           created_at: u.created_at,
@@ -79,16 +94,31 @@ export async function createStaffUser(
   email: string,
   password: string,
   role: UserRoleType,
-  branchIds?: string[]
+  branchIds?: string[],
+  displayName?: string,
+  phone?: string
 ) {
   const supabase = createAdminClient();
+
+  // Validate phone uniqueness if phone provided
+  if (phone?.trim()) {
+    const { data: existingPhone } = await supabase
+      .from('user_profiles')
+      .select('user_id')
+      .eq('phone', phone.trim())
+      .maybeSingle();
+
+    if (existingPhone) {
+      return { error: 'This phone number is already registered to another user.' };
+    }
+  }
 
   // 1. Create the user in Auth
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
-    user_metadata: { is_active: true },
+    user_metadata: { is_active: true, display_name: displayName },
   });
 
   if (authError) {
@@ -109,7 +139,14 @@ export async function createStaffUser(
     return { error: `User created but role assignment failed: ${roleError.message}` };
   }
 
-  // 3. Assign branches in user_branches table if provided
+  // 3. Create user_profiles row
+  await supabase.from('user_profiles').insert({
+    user_id: userId,
+    display_name: displayName?.trim() || email.split('@')[0],
+    phone: phone?.trim() || null,
+  });
+
+  // 4. Assign branches in user_branches table if provided
   if (branchIds && branchIds.length > 0) {
     const userBranchRows = branchIds.map((bId, idx) => ({
       user_id: userId,

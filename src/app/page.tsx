@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import {
   UtensilsCrossed,
@@ -12,9 +14,12 @@ import {
   QrCode,
   Receipt,
 } from 'lucide-react';
-import { RESTAURANT_NAME, RESTAURANT_TAGLINE } from '@/lib/constants';
+import { useSystemSettings } from '@/context/SystemSettingsContext';
 
 export default function HomePage() {
+  const { settings } = useSystemSettings();
+  const restaurantName = settings?.restaurant_name || 'Savoria';
+
   const features = [
     {
       icon: ShoppingCart,
@@ -84,11 +89,19 @@ export default function HomePage() {
       {/* Top Navigation Bar */}
       <header className="w-full max-w-7xl mx-auto px-6 py-6 flex items-center justify-between z-20">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center shadow-lg shadow-accent-primary/25 border border-white/10">
-            <UtensilsCrossed className="w-5 h-5 text-white" />
-          </div>
+          {settings?.logo_url ? (
+            <img
+              src={settings.logo_url}
+              alt={restaurantName}
+              className="w-10 h-10 rounded-2xl object-cover shadow-lg shadow-accent-primary/25 border border-white/10"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center shadow-lg shadow-accent-primary/25 border border-white/10">
+              <UtensilsCrossed className="w-5 h-5 text-white" />
+            </div>
+          )}
           <div>
-            <span className="text-base font-black tracking-tight gradient-text">{RESTAURANT_NAME}</span>
+            <span className="text-base font-black tracking-tight gradient-text">{restaurantName}</span>
             <span className="block text-[10px] text-text-muted font-semibold tracking-wider uppercase">
               Management Suite
             </span>
@@ -190,7 +203,7 @@ export default function HomePage() {
           <span>Role-Based Protected • Bank-Grade Security</span>
         </div>
         <p className="text-center sm:text-right">
-          &copy; {new Date().getFullYear()} {RESTAURANT_NAME} Management System. All rights reserved.
+          &copy; {new Date().getFullYear()} {restaurantName} Management System. All rights reserved.
         </p>
       </footer>
     </div>

@@ -6,8 +6,28 @@ import { DayEnd } from '@/types/database';
 export async function generateDayEndPDF(dayEnd: DayEnd, mode: 'print' | 'download' = 'print') {
   const { jsPDF } = await import('jspdf');
 
+  // Fetch dynamic system settings from DB
+  let settings: any = null;
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    const { data: dbSettings } = await supabase.from('system_settings').select('*').limit(1).maybeSingle();
+    if (dbSettings) {
+      settings = dbSettings;
+    }
+  } catch (e) {
+    console.warn('Could not fetch system settings for day-end PDF:', e);
+  }
+
+  const name = settings?.restaurant_name || RESTAURANT_NAME;
+  const tagline = settings?.tagline || RESTAURANT_TAGLINE;
+  const address = settings?.address || null;
+  const phone = settings?.contact_phone || null;
+  const email = settings?.contact_email || null;
+  const logoUrl = settings?.logo_url || null;
+
   // Height estimate
-  const totalHeight = 195;
+  const totalHeight = 210;
   const doc = new jsPDF({
     unit: 'mm',
     format: [80, totalHeight],
@@ -15,20 +35,51 @@ export async function generateDayEndPDF(dayEnd: DayEnd, mode: 'print' | 'downloa
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 5;
+  const contentWidth = pageWidth - margin * 2;
   let y = 8;
 
   // 1. Restaurant Header
+  if (logoUrl) {
+    try {
+      doc.addImage(logoUrl, 'PNG', (pageWidth - 12) / 2, y, 12, 12);
+      y += 14;
+    } catch (err) {
+      // Ignore logo error
+    }
+  }
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
   doc.setTextColor(15, 23, 42);
-  doc.text(RESTAURANT_NAME.toUpperCase(), pageWidth / 2, y, { align: 'center' });
+  doc.text(name.toUpperCase(), pageWidth / 2, y, { align: 'center' });
   y += 4.5;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(71, 85, 105);
-  doc.text(RESTAURANT_TAGLINE, pageWidth / 2, y, { align: 'center' });
-  y += 4.5;
+  if (tagline) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(tagline, pageWidth / 2, y, { align: 'center' });
+    y += 4;
+  }
+
+  if (address) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(address, pageWidth / 2, y, { align: 'center', maxWidth: contentWidth });
+    y += 3.8;
+  }
+
+  if (phone || email) {
+    const contactStr = [phone && `Tel: ${phone}`, email && `Email: ${email}`].filter(Boolean).join(' | ');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(contactStr, pageWidth / 2, y, { align: 'center', maxWidth: contentWidth });
+    y += 3.8;
+  }
+
+  y += 1;
 
   // Title: DAY END / Z-REPORT
   doc.setFont('helvetica', 'bold');

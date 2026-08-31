@@ -276,9 +276,19 @@ export default function POSPayment({
                             <span className="font-mono text-text-muted font-medium">
                               {generateOrderNumber(order.id, order.order_number)}
                             </span>
-                            <Badge variant="served" className="text-[9px] py-0 px-1.5">
-                              served
-                            </Badge>
+                            <span className={cn(
+                              'text-[9px] font-bold px-1.5 py-0.5 rounded uppercase',
+                              order.order_type === 'takeaway' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' :
+                              order.order_type === 'counter' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' :
+                              'bg-accent-primary/15 text-accent-primary border border-accent-primary/20'
+                            )}>
+                              {order.order_type === 'takeaway' ? 'Take Away' : order.order_type === 'counter' ? 'Counter' : 'Dine In'}
+                            </span>
+                            {order.customer_name && (
+                              <span className="text-[10px] text-text-muted truncate max-w-[80px]">
+                                {order.customer_name}
+                              </span>
+                            )}
                             <span className="ml-auto font-medium text-text-secondary">
                               {formatCurrency(orderTotal)}
                             </span>

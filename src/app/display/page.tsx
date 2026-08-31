@@ -120,10 +120,10 @@ export default function OrderDisplayPage() {
         order_items(*, menu_item:menu_items(*)),
         invoice:invoices!fk_orders_invoice(*)
       `)
-      .in('status', ['pending', 'preparing', 'served']);
+      .in('status', ['pending', 'preparing', 'completed', 'served']);
 
     if (currentBranch) {
-      query = query.eq('branch_id', currentBranch.id);
+      query = query.or(`branch_id.eq.${currentBranch.id},branch_id.is.null`);
     }
 
     const { data } = await query.order('created_at', { ascending: true });
@@ -132,12 +132,12 @@ export default function OrderDisplayPage() {
       const fetched = data as unknown as OrderWithItems[];
       setOrders(fetched);
 
-      // Check for newly ready orders
-      const currentServed = fetched.filter((o) => o.status === 'served');
-      const currentServedIds = new Set(currentServed.map((o) => o.id));
+      // Check for newly ready orders (completed in kitchen)
+      const currentReady = fetched.filter((o) => o.status === 'completed');
+      const currentReadyIds = new Set(currentReady.map((o) => o.id));
 
       const newIds = new Set<string>();
-      currentServed.forEach((o) => {
+      currentReady.forEach((o) => {
         if (!previousServedIds.current.has(o.id) && previousServedIds.current.size > 0) {
           newIds.add(o.id);
         }
@@ -152,22 +152,20 @@ export default function OrderDisplayPage() {
         }, 8000);
       }
 
-      previousServedIds.current = currentServedIds;
+      previousServedIds.current = currentReadyIds;
     }
   }
 
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
     } else {
       document.exitFullscreen().catch(() => {});
-      setIsFullscreen(false);
     }
   }
 
   const preparingOrders = orders.filter((o) => o.status === 'pending' || o.status === 'preparing');
-  const readyOrders = orders.filter((o) => o.status === 'served');
+  const readyOrders = orders.filter((o) => o.status === 'completed');
 
   if (!mounted) {
     return (

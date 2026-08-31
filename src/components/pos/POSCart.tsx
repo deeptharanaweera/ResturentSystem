@@ -90,33 +90,28 @@ export default function POSCart({
       .eq('is_active', true)
       .order('table_number');
 
-    // Fetch all active orders (pending, preparing, served)
+    // Fetch all active unpaid/un-invoiced orders (pending, preparing, completed, served)
     const { data: ordersData } = await supabase
       .from('orders')
       .select('table_id, payment_status, invoice_id')
-      .in('status', ['pending', 'preparing', 'served']);
+      .in('status', ['pending', 'preparing', 'completed', 'served'])
+      .is('invoice_id', null);
 
     const unpaidCounts: Record<string, number> = {};
-    const paidCounts: Record<string, number> = {};
 
     (ordersData || []).forEach((o: any) => {
       if (o.table_id) {
-        if (o.payment_status === 'unpaid' && !o.invoice_id) {
-          unpaidCounts[o.table_id] = (unpaidCounts[o.table_id] || 0) + 1;
-        } else {
-          paidCounts[o.table_id] = (paidCounts[o.table_id] || 0) + 1;
-        }
+        unpaidCounts[o.table_id] = (unpaidCounts[o.table_id] || 0) + 1;
       }
     });
 
     const tablesWithCounts: TableWithOrders[] = (tablesData || []).map((t: any) => {
       const unpaid = unpaidCounts[t.id] || 0;
-      const paid = paidCounts[t.id] || 0;
       return {
         ...t,
-        activeOrderCount: unpaid + paid,
+        activeOrderCount: unpaid,
         unpaidCount: unpaid,
-        paidCount: paid,
+        paidCount: 0,
       };
     });
 
@@ -125,7 +120,7 @@ export default function POSCart({
 
   async function fetchTableOrders(tableId: string) {
     setLoadingOrders(true);
-    // Fetch all active orders for this table (both unpaid and paid in progress)
+    // Fetch all active un-invoiced orders for this table
     const { data } = await supabase
       .from('orders')
       .select(`
@@ -135,7 +130,8 @@ export default function POSCart({
         invoice:invoices!fk_orders_invoice(*)
       `)
       .eq('table_id', tableId)
-      .in('status', ['pending', 'preparing', 'served'])
+      .is('invoice_id', null)
+      .in('status', ['pending', 'preparing', 'completed', 'served'])
       .order('created_at', { ascending: false });
 
     onTableOrdersLoaded((data || []) as unknown as OrderWithItems[]);
@@ -212,14 +208,14 @@ export default function POSCart({
           </div>
         )}
 
-        {/* Customer Name & Optional Table (for takeaway) */}
-        {orderType === 'takeaway' && (
+        {/* Customer Name & Optional Table (for takeaway & counter) */}
+        {(orderType === 'takeaway' || orderType === 'counter') && (
           <div className="mt-2 space-y-2">
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
               <input
                 type="text"
-                placeholder="Customer name (optional if table selected)..."
+                placeholder="Customer name (optional)..."
                 value={customerName}
                 onChange={(e) => onCustomerNameChange(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-xl text-sm bg-bg-tertiary border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary/50 transition-all"
@@ -235,12 +231,8 @@ export default function POSCart({
                 <option value="">Attach to Table (Optional)...</option>
                 {tables.map((t) => {
                   let statusLabel = 'Available';
-                  if (t.unpaidCount > 0 && t.paidCount > 0) {
-                    statusLabel = `Occupied (${t.unpaidCount} unpaid, ${t.paidCount} paid)`;
-                  } else if (t.unpaidCount > 0) {
+                  if (t.unpaidCount > 0) {
                     statusLabel = `Occupied (${t.unpaidCount} unpaid)`;
-                  } else if (t.paidCount > 0) {
-                    statusLabel = `Occupied (Paid)`;
                   }
                   return (
                     <option key={t.id} value={t.id}>

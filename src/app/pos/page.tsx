@@ -91,10 +91,10 @@ export default function POSPage() {
   // Fullscreen toggle
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => { });
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
       setIsFullscreen(false);
     }
   }
@@ -336,7 +336,7 @@ export default function POSPage() {
         order_items(*, menu_item:menu_items(*)),
         invoice:invoices!fk_orders_invoice(*)
       `)
-      .in('status', ['pending', 'preparing', 'served'])
+      .in('status', ['pending', 'preparing', 'completed', 'served'])
       .eq('payment_status', 'unpaid')
       .is('invoice_id', null);
 
@@ -477,9 +477,6 @@ export default function POSPage() {
   function validateOrder(): string | null {
     if (cartItems.length === 0) return 'Cart is empty';
     if (orderType === 'dine_in' && !selectedTableId) return 'Please select a table for dine-in orders';
-    if (orderType === 'takeaway' && !customerName.trim() && !selectedTableId) {
-      return 'Please enter customer name or select a table for takeaway orders';
-    }
     return null;
   }
 
@@ -508,7 +505,7 @@ export default function POSPage() {
 
     setProcessing(true);
     try {
-      const custName = customerName.trim() || (orderType === 'takeaway' && selectedTableId ? 'Table Takeaway' : null);
+      const custName = customerName.trim() || null;
 
       const { data: order, error: orderError } = await supabase
         .from('orders')
@@ -517,7 +514,7 @@ export default function POSPage() {
           terminal_id: currentTerminal?.id || null,
           table_id: selectedTableId || null,
           total_amount: grandTotal,
-          status: 'pending',
+          status: orderType === 'counter' ? 'served' : 'pending',
           payment_status: 'unpaid',
           order_type: orderType,
           customer_name: custName,
@@ -595,7 +592,7 @@ export default function POSPage() {
         if (paymentError) throw paymentError;
       }
 
-      const custName = customerName.trim() || (orderType === 'takeaway' && selectedTableId ? 'Table Takeaway' : null);
+      const custName = customerName.trim() || null;
 
       // 3. Create order (status: 'pending' so it goes to the kitchen for preparation)
       const { data: order, error: orderError } = await supabase
@@ -605,7 +602,7 @@ export default function POSPage() {
           terminal_id: currentTerminal?.id || null,
           table_id: selectedTableId || null,
           total_amount: grandTotal,
-          status: 'pending',
+          status: orderType === 'counter' ? 'served' : 'pending',
           payment_status: 'paid',
           invoice_id: invoice.id,
           order_type: orderType,
@@ -738,7 +735,6 @@ export default function POSPage() {
         await supabase
           .from('orders')
           .update({
-            status: 'completed',
             payment_status: 'paid',
             total_amount: orderTotal,
             invoice_id: invoice.id,
@@ -821,7 +817,7 @@ export default function POSPage() {
       .eq('table_id', tableId)
       .eq('payment_status', 'unpaid')
       .is('invoice_id', null)
-      .in('status', ['pending', 'preparing', 'served'])
+      .in('status', ['pending', 'preparing', 'completed', 'served'])
       .order('created_at', { ascending: false });
 
     setTableOrders((data || []) as unknown as OrderWithItems[]);
@@ -927,11 +923,10 @@ export default function POSPage() {
                           key={t.id}
                           type="button"
                           onClick={() => setOpenSelectedTerminalId(t.id)}
-                          className={`p-3 rounded-2xl border text-left flex items-center justify-between transition-all cursor-pointer ${
-                            isSelected
+                          className={`p-3 rounded-2xl border text-left flex items-center justify-between transition-all cursor-pointer ${isSelected
                               ? 'bg-accent-primary/20 border-accent-primary text-text-primary shadow-md shadow-accent-primary/10'
                               : 'bg-white/[0.02] border-white/[0.08] text-text-muted hover:text-text-primary hover:bg-white/[0.04]'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-2">
                             <Monitor className="w-4 h-4 text-accent-primary" />
@@ -1088,21 +1083,19 @@ export default function POSPage() {
       <div className="lg:hidden flex border-b border-border shrink-0 bg-bg-secondary">
         <button
           onClick={() => setMobilePanel('menu')}
-          className={`flex-1 py-3 text-xs font-semibold text-center transition-all cursor-pointer ${
-            mobilePanel === 'menu'
+          className={`flex-1 py-3 text-xs font-semibold text-center transition-all cursor-pointer ${mobilePanel === 'menu'
               ? 'text-accent-primary border-b-2 border-accent-primary bg-accent-primary/5'
               : 'text-text-muted'
-          }`}
+            }`}
         >
           Menu
         </button>
         <button
           onClick={() => setMobilePanel('cart')}
-          className={`flex-1 py-3 text-xs font-semibold text-center transition-all cursor-pointer relative ${
-            mobilePanel === 'cart'
+          className={`flex-1 py-3 text-xs font-semibold text-center transition-all cursor-pointer relative ${mobilePanel === 'cart'
               ? 'text-accent-primary border-b-2 border-accent-primary bg-accent-primary/5'
               : 'text-text-muted'
-          }`}
+            }`}
         >
           Cart
           {cartItemCount > 0 && (
@@ -1113,11 +1106,10 @@ export default function POSPage() {
         </button>
         <button
           onClick={() => setMobilePanel('payment')}
-          className={`flex-1 py-3 text-xs font-semibold text-center transition-all cursor-pointer ${
-            mobilePanel === 'payment'
+          className={`flex-1 py-3 text-xs font-semibold text-center transition-all cursor-pointer ${mobilePanel === 'payment'
               ? 'text-accent-primary border-b-2 border-accent-primary bg-accent-primary/5'
               : 'text-text-muted'
-          }`}
+            }`}
         >
           Payment
         </button>
@@ -1127,18 +1119,16 @@ export default function POSPage() {
       <div className="flex-1 flex min-h-0">
         {/* Left: Menu Grid */}
         <div
-          className={`${
-            mobilePanel === 'menu' ? 'flex' : 'hidden'
-          } lg:flex flex-col flex-1 min-w-0 border-r border-border`}
+          className={`${mobilePanel === 'menu' ? 'flex' : 'hidden'
+            } lg:flex flex-col flex-1 min-w-0 border-r border-border`}
         >
           <POSMenuGrid onAddItem={handleAddItem} />
         </div>
 
         {/* Center: Cart */}
         <div
-          className={`${
-            mobilePanel === 'cart' ? 'flex' : 'hidden'
-          } lg:flex flex-col w-full lg:w-80 xl:w-96 border-r border-border bg-bg-secondary/50`}
+          className={`${mobilePanel === 'cart' ? 'flex' : 'hidden'
+            } lg:flex flex-col w-full lg:w-80 xl:w-96 border-r border-border bg-bg-secondary/50`}
         >
           <POSCart
             items={cartItems}
@@ -1159,9 +1149,8 @@ export default function POSPage() {
 
         {/* Right: Payment */}
         <div
-          className={`${
-            mobilePanel === 'payment' ? 'flex' : 'hidden'
-          } lg:flex flex-col w-full lg:w-72 xl:w-80 bg-bg-secondary/30`}
+          className={`${mobilePanel === 'payment' ? 'flex' : 'hidden'
+            } lg:flex flex-col w-full lg:w-72 xl:w-80 bg-bg-secondary/30`}
         >
           <POSPayment
             grandTotal={grandTotal}
@@ -1242,20 +1231,19 @@ export default function POSPage() {
           {/* Live Variance Calculation */}
           {closeActualCash && !isNaN(parseFloat(closeActualCash)) && (
             <div
-              className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
-                parseFloat(closeActualCash) - ((activeShift ? Number(activeShift.opening_cash) : 0) + shiftSales.totalCash) === 0
+              className={`p-3 rounded-xl border text-xs flex items-center justify-between ${parseFloat(closeActualCash) - ((activeShift ? Number(activeShift.opening_cash) : 0) + shiftSales.totalCash) === 0
                   ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
                   : parseFloat(closeActualCash) - ((activeShift ? Number(activeShift.opening_cash) : 0) + shiftSales.totalCash) > 0
-                  ? 'bg-blue-500/10 border-blue-500/20 text-blue-400'
-                  : 'bg-accent-danger/10 border-accent-danger/20 text-accent-danger'
-              }`}
+                    ? 'bg-blue-500/10 border-blue-500/20 text-blue-400'
+                    : 'bg-accent-danger/10 border-accent-danger/20 text-accent-danger'
+                }`}
             >
               <span className="font-semibold">
                 {parseFloat(closeActualCash) - ((activeShift ? Number(activeShift.opening_cash) : 0) + shiftSales.totalCash) === 0
                   ? 'Drawer Balanced'
                   : parseFloat(closeActualCash) - ((activeShift ? Number(activeShift.opening_cash) : 0) + shiftSales.totalCash) > 0
-                  ? 'Cash Over'
-                  : 'Cash Short'}
+                    ? 'Cash Over'
+                    : 'Cash Short'}
               </span>
               <span className="font-mono font-bold">
                 {formatCurrency(
